@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 4: roomy notes) */
+/* J EMPIRE SERVER — style.css (version 5: decision sheet + home alerts) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -209,6 +209,15 @@ h2 { font-size: 1.5rem; }
 .raw { white-space: pre-wrap; font-size: 0.8rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem; }
 .sheet-btns { display: flex; gap: 0.6rem; justify-content: space-between; }
 .sheet-btns .btn { flex: 1; }
+
+.decide { background: var(--red-bg); border: 2px solid var(--red); border-radius: 14px; padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.decide-name { font-weight: 700; }
+.decide-why { font-weight: 700; color: var(--red); font-size: 0.9rem; }
+.decide-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.pick { min-height: 44px; padding: 0 0.8rem; border-radius: 10px; border: 1px solid var(--navy); background: var(--paper); font-weight: 700; font-size: 0.9rem; }
+.pick.on { background: var(--navy); color: #F2E6C9; }
+.alert.tap { width: 100%; text-align: left; font-size: 1rem; display: block; }
+.alerts { display: flex; flex-direction: column; gap: 0.5rem; }
 
 @media (min-width: 900px) {
   .intake { flex-direction: row; align-items: flex-start; gap: 1.5rem; }

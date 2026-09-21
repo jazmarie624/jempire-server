@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 3: ZIP check fix)
+// J EMPIRE SERVER — app.js (version 4: stuck-job reminders on Home)
 (function () {
   "use strict";
 
@@ -146,7 +146,7 @@
   async function loadGlance() {
     const tiles = document.querySelectorAll("#glance .tile-value");
     const [jobsRes, invRes, goalRes] = await Promise.all([
-      db.from("jes_jobs").select("id,client,address,county,status,price,done_at,invoice_id,paid_upfront"),
+      db.from("jes_jobs").select("id,client,address,county,status,price,done_at,invoice_id,paid_upfront,on_today,attempt_count,created_at"),
       db.from("jes_invoices").select("total,status"),
       db.from("jes_settings").select("value").eq("key", "weekly_goal").maybeSingle()
     ]);
@@ -171,14 +171,25 @@
     tiles[4].textContent = money(pending);
     document.querySelectorAll("#glance .tile-sub")[3].textContent = `Goal ${money(goal)}, Thu to Thu`;
 
-    // "Forgot to bill" alert: done 7+ days ago, not invoiced, not paid upfront, not ABC (pays in-app)
+    // ---- Reminders: nothing is allowed to sit forgotten ----
+    const alerts = [];
+    const noAddress = jobs.filter((j) => j.status === "Active" && needsFixing(j));
+    if (noAddress.length) alerts.push(`${noAddress.length} saved job${noAddress.length > 1 ? "s are" : " is"} missing an address and can't be routed yet. Tap to fix.`);
+
+    const threeDays = Date.now() - 3 * 864e5;
+    const idle = jobs.filter((j) => j.status === "Active" && !needsFixing(j) && !j.on_today &&
+      (j.attempt_count || 0) === 0 && j.created_at && new Date(j.created_at).getTime() < threeDays);
+    if (idle.length) alerts.push(`${idle.length} job${idle.length > 1 ? "s have" : " has"} been sitting 3+ days with no attempt and no route. Add to a route or put on hold?`);
+
     const weekAgo = Date.now() - 7 * 864e5;
     const forgot = jobs.filter((j) =>
       (j.status === "Served" || j.status === "Non-Serve Complete") && !j.invoice_id && !j.paid_upfront &&
       j.client !== "ABC Legal" && j.done_at && new Date(j.done_at).getTime() < weekAgo);
-    if (forgot.length) {
-      $("#alerts").innerHTML = `<div class="alert">${forgot.length} finished job${forgot.length > 1 ? "s are" : " is"} over a week old and not on an invoice yet.</div>`;
-    }
+    if (forgot.length) alerts.push(`${forgot.length} finished job${forgot.length > 1 ? "s are" : " is"} over a week old and not on an invoice yet.`);
+
+    $("#alerts").innerHTML = alerts.length
+      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" data-go="${i === alerts.length - 1 && forgot.length ? "money" : "jobs"}">${esc(a)}</button>`).join("")}</div>`
+      : "";
   }
 
   function comingSoon(id) {

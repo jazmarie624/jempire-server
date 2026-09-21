@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 3: roomy notes box)
+// J EMPIRE SERVER — intake.js (version 5: save without address + 'what do you want to do?' check)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -11,7 +11,7 @@
 
   const RULES = {
     "ABC Legal": "Keeps: order #, name, price, address, serve-by date, attempt instructions, vehicles. Ignores: Details, Photos, History, Deliver To, and the other menu words.",
-    "Ody's": "Keeps: Standard or Rush, name, ODY job #, C/O line (to notes), and the address when it's included. Paste several at once.",
+    "Ody's": "Keeps: Standard or Rush, name, ODY job #, Action date and C/O (to notes), and the address when included. Once you add an address for a name, it fills in automatically next time.",
     "ProVest": "Keeps: each address as its own job. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
     "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map.",
     "Private": "Makes a blank job for you to fill in. If you paste an address, it's filled in for you."
@@ -81,6 +81,9 @@
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false };
   }
+  // Same name next time = same address filled in (hospitals, water authority, etc.)
+  const nameKey = (n) => (n || "").toLowerCase().replace(/(\.\.\.|…)\s*$/, "").replace(/[^a-z0-9& ]/g, " ").replace(/\s+/g, " ").trim();
+
   function removeIgnored(ls, extra) {
     if (!extra || !extra.length) return ls;
     const lower = extra.map((w) => w.toLowerCase().trim()).filter(Boolean);
@@ -143,39 +146,52 @@
   }
 
   // ---------- Ody's ----------
-  // Handles both layouts: job # on top of the block, or job # at the bottom.
+  // Handles the list view (name above "ODY - #", "Action date" below it) and
+  // the detail view (job # on top, then name, C/O and address).
   function parseOdys(text, extra) {
     const ls = removeIgnored(lines(text), extra);
     const isMarker = (l) => /^ODY\s*[—–\-:]*\s*\d{6,}/i.test(l);
     const isService = (l) => /^(standard|rush|rushed|stand|standa|standar|ru|rus)$/i.test(l);
+    const isAction = (l) => /^action\b/i.test(l);
     const isCO = (l) => /^(c\/o|attn|attention)\b/i.test(l);
     const isCity = (l) => /\b(FL|Florida)\b[\s,]*\d{5}/i.test(l);
+    const isNameish = (l) => !isService(l) && !isAction(l) && !isCO(l) && !isMarker(l) &&
+      !/^ODY$/i.test(l) && !STREET_START.test(l) && !isCity(l) && /[A-Za-z]{2}/.test(l);
     const idx = [];
     ls.forEach((l, i) => { if (isMarker(l)) idx.push(i); });
+    if (!idx.length) { const d = blankDraft("Ody's"); d.raw_text = text.trim(); return [d]; }
 
-    let blocks;
-    if (!idx.length) blocks = [ls];
-    else {
-      const headerFirst = ls.slice(0, idx[0]).every((l) => isService(l) || /^ODY$/i.test(l));
-      // a Standard/Rush line sitting right above a job # belongs to that job
-      const startOf = (at) => (at > 0 && isService(ls[at - 1]) ? at - 1 : at);
-      blocks = headerFirst
-        ? idx.map((at, n) => ls.slice(n === 0 ? 0 : startOf(at), n + 1 < idx.length ? startOf(idx[n + 1]) : ls.length))
-        : idx.map((at, n) => ls.slice(n === 0 ? 0 : idx[n - 1] + 1, at + 1));
-    }
+    const headerFirst = ls.slice(0, idx[0]).every((l) => isService(l) || /^ODY$/i.test(l));
+    const startOf = (at) => (at > 0 && isService(ls[at - 1]) ? at - 1 : at);
 
-    return blocks.map((bl) => {
+    return idx.map((at, n) => {
       const d = blankDraft("Ody's");
+      d.job_no = ls[at].match(/(\d{6,})/)[1];
+      let bl;
+      if (headerFirst) {
+        bl = ls.slice(n === 0 ? 0 : startOf(at), n + 1 < idx.length ? startOf(idx[n + 1]) : ls.length);
+      } else {
+        // everything after the previous job's marker (skipping its Action line) up to this marker
+        let from = n === 0 ? 0 : idx[n - 1] + 1;
+        while (from < at && isAction(ls[from])) from++;
+        bl = ls.slice(from, at + 1);
+        if (ls[at + 1] && isAction(ls[at + 1])) bl.push(ls[at + 1]);
+      }
       d.raw_text = bl.join("\n");
-      const marker = bl.find(isMarker);
-      if (marker) d.job_no = marker.match(/(\d{6,})/)[1];
-      const body = bl.filter((l) => !isMarker(l) && !/^ODY$/i.test(l));
+      const body = bl.filter((l) => !isMarker(l));
 
-      const pi = body.findIndex((l) => !isService(l) && !isCO(l) && !STREET_START.test(l) && !isCity(l));
-      if (pi >= 0) d.person = titleCase(body[pi]);
+      // name: first name-like line (detail view) or the one right above the job # (list view)
+      const names = body.filter(isNameish);
+      const nameLine = headerFirst ? names[0] : names[names.length - 1];
+      if (nameLine) d.person = titleCase(nameLine);
 
+      const notes = [];
       const co = body.find(isCO);
-      if (co) d.notes = titleCase(co.replace(/^(c\/o|attn|attention)\s*:?\s*/i, "C/O: "));
+      if (co) notes.push(titleCase(co.replace(/^(c\/o|attn|attention)\s*:?\s*/i, "C/O: ")));
+      const act = body.find(isAction);
+      if (act) notes.push("Action date: " + act.replace(/^action\s*:?\s*/i, ""));
+      if (nameLine && /(\.\.\.|…)\s*$/.test(nameLine)) notes.push("Name was cut off in the paste — check the full name in Ody's app.");
+      d.notes = notes.join("\n");
 
       const si = body.findIndex((l) => STREET_START.test(l));
       if (si >= 0) {
@@ -188,8 +204,8 @@
         d.county = countyFor(d.address);
       }
 
-      const svcBefore = body.slice(0, pi >= 0 ? pi : body.length).reverse().find(isService);
-      const svc = svcBefore || body.find(isService) || "";
+      const pi = nameLine ? body.indexOf(nameLine) : body.length;
+      const svc = body.slice(0, pi).reverse().find(isService) || body.find(isService) || "";
       d.service = /^ru/i.test(svc) ? "Rush" : "Standard";
       return d;
     });
@@ -268,21 +284,21 @@
     return parsePrivate(text);
   }
 
-  // What must be fixed before a job can be routed (red)
-  function problems(d, existing) {
+  // Missing address / ZIP / county: the job still SAVES, but can't go on a route until fixed.
+  function problems(d) {
     const p = [];
-    if (!d.client) p.push("Client missing");
     if (!d.address) p.push("Address missing");
     else if (!hasZip(d.address)) p.push("ZIP missing");
     if (!d.county) p.push("County missing");
-    if (existing) {
-      const dupNo = d.job_no && existing.some((e) => e.job_no && e.client === d.client && e.job_no === d.job_no);
-      const dupAddr = !d.job_no && d.address && existing.some((e) => e.client === d.client && e.status !== "Served" &&
-        (e.address || "").toLowerCase() === d.address.toLowerCase());
-      if (dupNo) p.push("Already saved (same job #)");
-      else if (dupAddr) p.push("Already saved (same address)");
-    }
     return p;
+  }
+  // Only a duplicate stops a save.
+  function duplicateOf(d, existing) {
+    if (!existing) return "";
+    if (d.job_no && existing.some((e) => e.job_no && e.client === d.client && e.job_no === d.job_no)) return "Already saved (same job #)";
+    if (!d.job_no && d.address && existing.some((e) => e.client === d.client && e.status !== "Served" &&
+      (e.address || "").toLowerCase() === d.address.toLowerCase())) return "Already saved (same address)";
+    return "";
   }
   function laterNotes(d) {
     const l = [];
@@ -291,12 +307,12 @@
     return l.length ? "Add " + l.join(" + ") + " later" : "";
   }
 
-  window.JES_PARSE = { parse, problems, countyFor, cleanAddress, titleCase, CLIENTS };
+  window.JES_PARSE = { parse, problems, duplicateOf, countyFor, cleanAddress, titleCase, nameKey, hasZip, CLIENTS };
 
   // =====================================================================
   // 2. SCREEN (Add Jobs)
   // =====================================================================
-  const S = { client: "Userve", drafts: [], existing: null, prices: {}, ignore: {}, addToday: true };
+  const S = { client: "Userve", drafts: [], existing: null, prices: {}, ignore: {}, known: {}, addToday: true };
 
   function J() { return window.JES; }
   function saveLocal() {
@@ -311,11 +327,13 @@
 
   async function loadData() {
     const db = J().db;
-    const [jobs, prices, ign] = await Promise.all([
+    const [jobs, prices, ign, known] = await Promise.all([
       db.from("jes_jobs").select("id,client,job_no,address,status"),
       db.from("jes_settings").select("value").eq("key", "default_prices").maybeSingle(),
-      db.from("jes_settings").select("value").eq("key", "ignore_words").maybeSingle()
+      db.from("jes_settings").select("value").eq("key", "ignore_words").maybeSingle(),
+      db.from("jes_settings").select("value").eq("key", "known_addresses").maybeSingle()
     ]);
+    S.known = (known.data && known.data.value) || {};
     S.existing = jobs.data || [];
     S.prices = (prices.data && prices.data.value) || {};
     S.ignore = (ign.data && ign.data.value) || {};
@@ -371,7 +389,15 @@
     const text = document.getElementById("inText").value;
     if (!text.trim() && S.client !== "Private") { J().toast("Paste jobs first"); return; }
     const found = parse(S.client, text, S.ignore[S.client]);
-    found.forEach((d) => { if (d.price == null) d.price = Number(S.prices[d.client] || 0); });
+    found.forEach((d) => {
+      if (d.price == null) d.price = Number(S.prices[d.client] || 0);
+      const k = nameKey(d.person);
+      if (!d.address && k && S.known[k]) {
+        d.address = S.known[k].address;
+        d.county = S.known[k].county || countyFor(d.address);
+        d.notes = (d.notes ? d.notes + "\n" : "") + "Address filled in from a past job with this name — double-check it.";
+      }
+    });
     S.drafts = S.drafts.concat(found);
     document.getElementById("inText").value = "";
     saveLocal();
@@ -382,13 +408,18 @@
   function drawDrafts() {
     const { esc } = J();
     const box = document.getElementById("inDrafts");
-    const withP = S.drafts.map((d, i) => ({ d, i, p: problems(d, S.existing) }));
+    const withP = S.drafts.map((d, i) => {
+      const dup = duplicateOf(d, S.existing);
+      return { d, i, dup, p: dup ? [dup] : problems(d) };
+    });
     withP.sort((a, b) => (b.p.length > 0) - (a.p.length > 0));
-    const red = withP.filter((x) => x.p.length).length;
-    const ready = withP.length - red;
+    const dups = withP.filter((x) => x.dup).length;
+    const red = withP.filter((x) => x.p.length && !x.dup).length;
+    const savable = withP.length - dups;
+    const ready = savable - red;
 
     document.getElementById("inSummary").innerHTML = S.drafts.length
-      ? `<span>${S.drafts.length} job${S.drafts.length > 1 ? "s" : ""} found</span><span><b class="ok">${ready} ready</b>${red ? ` · <b class="bad">${red} need fixing</b>` : ""}</span>`
+      ? `<span>${S.drafts.length} job${S.drafts.length > 1 ? "s" : ""} found</span><span><b class="ok">${ready} ready to route</b>${red ? ` · <b class="bad">${red} need an address</b>` : ""}${dups ? ` · <b class="bad">${dups} duplicate${dups > 1 ? "s" : ""}</b>` : ""}</span>`
       : `<span class="muted">Pick the client, paste their jobs, and tap Build Jobs.</span>`;
 
     box.innerHTML = withP.map(({ d, i, p }) => `
@@ -410,11 +441,12 @@
     if (!S.drafts.length) { area.innerHTML = ""; return; }
     area.innerHTML = `
       <label class="check-line"><input type="checkbox" id="inToday" ${S.addToday ? "checked" : ""}> Also add to Today's route</label>
-      <button class="btn go" id="inSave" ${ready ? "" : "disabled"}>Save ${ready} Ready Job${ready === 1 ? "" : "s"}</button>
-      ${red ? `<p class="muted small center">Red jobs wait here until you fix them.</p>` : ""}
+      <button class="btn go" id="inSave" ${savable ? "" : "disabled"}>Save ${savable} Job${savable === 1 ? "" : "s"}</button>
+      ${red ? `<p class="muted small center">Red jobs can still be saved — you'll be asked what to do with them.</p>` : ""}
+      ${dups ? `<p class="muted small center">Duplicates are not saved. Remove them with ✏️ → Remove.</p>` : ""}
       <button class="btn ghost" id="inClear">Clear all drafts</button>`;
     document.getElementById("inToday").onchange = (e) => { S.addToday = e.target.checked; };
-    document.getElementById("inSave").onclick = saveReady;
+    document.getElementById("inSave").onclick = checkBeforeSave;
     document.getElementById("inClear").onclick = () => {
       if (!confirm("Remove all drafts on this screen? Saved jobs are not affected.")) return;
       S.drafts = []; saveLocal(); drawDrafts();
@@ -487,16 +519,62 @@
     back.hidden = true; back.innerHTML = "";
   }
 
+  // ---------- "what do you want to do with it?" ----------
+  // Before saving, any job that can't be routed gets a decision.
+  function checkBeforeSave() {
+    const { esc } = J();
+    const pending = S.drafts
+      .map((d, i) => ({ d, i }))
+      .filter(({ d }) => !duplicateOf(d, S.existing) && problems(d).length);
+    if (!pending.length) { saveJobs(new Set()); return; }
+
+    const choice = {};                       // index -> "later" | "draft"
+    pending.forEach(({ i }) => { choice[i] = "later"; });
+    const back = document.getElementById("sheetBack");
+    const draw = () => {
+      back.hidden = false;
+      back.innerHTML = `
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dcTitle">
+          <h2 id="dcTitle">${pending.length} job${pending.length > 1 ? "s aren't" : " isn't"} ready for a route</h2>
+          <p class="muted">What do you want to do with ${pending.length > 1 ? "them" : "it"}?</p>
+          ${pending.map(({ d, i }) => `
+            <div class="decide">
+              <div class="decide-name">${esc(d.person || "(no name yet)")}${d.job_no ? ` <span class="jobno">#${esc(d.job_no)}</span>` : ""}</div>
+              <div class="decide-why">${esc(problems(d).join(" · "))}</div>
+              <div class="decide-btns">
+                <button class="pick ${choice[i] === "fix" ? "on" : ""}" data-fix="${i}">Add address now</button>
+                <button class="pick ${choice[i] === "later" ? "on" : ""}" data-set="${i}" data-val="later">Save, route later</button>
+                <button class="pick ${choice[i] === "draft" ? "on" : ""}" data-set="${i}" data-val="draft">Keep as draft</button>
+              </div>
+            </div>`).join("")}
+          <div class="sheet-btns">
+            <button class="btn ghost" id="dcCancel">Go back</button>
+            <button class="btn go" id="dcSave">Save now</button>
+          </div>
+        </div>`;
+      back.querySelectorAll("[data-set]").forEach((b) => b.onclick = () => { choice[b.getAttribute("data-set")] = b.getAttribute("data-val"); draw(); });
+      back.querySelectorAll("[data-fix]").forEach((b) => b.onclick = () => { closeSheet(); openSheet(Number(b.getAttribute("data-fix"))); });
+      document.getElementById("dcCancel").onclick = closeSheet;
+      document.getElementById("dcSave").onclick = () => {
+        const keep = new Set(pending.filter(({ i }) => choice[i] === "draft").map(({ d }) => d));
+        closeSheet();
+        saveJobs(keep);
+      };
+    };
+    draw();
+  }
+
   // ---------- save ----------
-  async function saveReady() {
+  async function saveJobs(keepAsDraft) {
     const btn = document.getElementById("inSave");
     btn.disabled = true; btn.textContent = "Saving…";
-    const ready = S.drafts.filter((d) => !problems(d, S.existing).length);
-    const rows = ready.map((d) => ({
-      client: d.client, job_no: d.job_no || null, person: d.person || null, address: d.address,
-      county: d.county, service: d.service || "Standard", due_date: d.due_date || null,
+    const toSave = S.drafts.filter((d) => !duplicateOf(d, S.existing) && !keepAsDraft.has(d));
+    if (!toSave.length) { drawDrafts(); J().toast("Nothing saved — kept as drafts"); return; }
+    const rows = toSave.map((d) => ({
+      client: d.client, job_no: d.job_no || null, person: d.person || null, address: d.address || null,
+      county: d.county || null, service: d.service || "Standard", due_date: d.due_date || null,
       price: Number(d.price) || 0, notes: d.notes || null, raw_text: d.raw_text || null,
-      status: "Active", on_today: S.addToday,
+      status: "Active", on_today: S.addToday && !problems(d).length,
       private_phone: d.private_phone || null, private_email: d.private_email || null,
       paid_upfront: !!d.paid_upfront
     }));
@@ -506,11 +584,19 @@
       btn.disabled = false; btn.textContent = "Try again";
       return;
     }
-    S.drafts = S.drafts.filter((d) => !ready.includes(d));
+    S.drafts = S.drafts.filter((d) => !toSave.includes(d));
     saveLocal();
+    // remember name → address for next time
+    let learned = false;
+    toSave.forEach((d) => {
+      const k = nameKey(d.person);
+      if (k && d.address && hasZip(d.address)) { S.known[k] = { address: d.address, county: d.county }; learned = true; }
+    });
+    if (learned) await J().db.from("jes_settings").upsert({ key: "known_addresses", value: S.known });
     await loadData();
     drawDrafts();
-    J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${S.addToday ? " to Today" : ""}`);
+    const later = rows.filter((r) => !r.on_today && S.addToday).length;
+    J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${later ? ` · ${later} waiting for an address` : ""}`);
   }
 
   async function saveIgnore() {
