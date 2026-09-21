@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 10: slim invoice picker, invoice details, office hub) */
+/* J EMPIRE SERVER — style.css (version 11: invoice columns + editing) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -391,6 +391,38 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   .ip-n { width: 26pt; } .ip-no { width: 110pt; } .ip-amt { text-align: right; width: 70pt; }
   .ip-sub { text-align: right; font-weight: 700; padding: 4pt 0; }
   .ip-due { display: flex; justify-content: space-between; font-size: 15pt; font-weight: 700; border-top: 2pt solid #000; margin-top: 12pt; padding-top: 6pt; }
+}
+
+
+/* ================= Invoice columns + editing ================= */
+.inv-cols { display: flex; flex-direction: column; gap: 0.8rem; }
+.inv-col { display: none; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 0.7rem; flex-direction: column; gap: 0.5rem; }
+.inv-col.phone-on { display: flex; }
+.col-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.col-head h2 { font-size: 1.5rem; }
+.col-sub { font-size: 0.8rem; color: var(--navy-2); }
+.col-totals { display: flex; justify-content: space-between; font-weight: 700; font-size: 0.88rem; border-bottom: 2px solid var(--gold); padding-bottom: 0.4rem; }
+.col-totals .ok { color: var(--green); } .col-totals .bad { color: var(--red); }
+.col-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.inv-mini { display: flex; flex-direction: column; gap: 0.15rem; text-align: left; border-radius: 12px; padding: 0.55rem 0.7rem; background: #fff; min-height: 56px; font: inherit; color: inherit; }
+.inv-mini.pending { border: 2px solid var(--red); }
+.inv-mini.paid { border: 2px solid var(--green); background: var(--green-bg); }
+.im-top { display: flex; justify-content: space-between; gap: 0.4rem; }
+.im-total { font-weight: 700; }
+.im-sub { font-size: 0.8rem; color: var(--navy-2); }
+.pending .im-sub { color: var(--red); font-weight: 600; }
+.paid .im-sub { color: var(--green); font-weight: 600; }
+.ov-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+.pill-paid { background: var(--green); } .pill-pending { background: var(--red); }
+.ov-lines { display: flex; flex-direction: column; gap: 0.25rem; }
+.ov-line { display: flex; align-items: center; gap: 0.45rem; padding: 0.25rem 0; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+.ov-line .price-in input { width: 5.8rem; }
+.ex-desc { flex: 1; min-width: 0; min-height: 44px; font-size: 0.95rem; border: 1px solid var(--line); border-radius: 10px; padding: 0 0.6rem; font-family: var(--sans); }
+.phone-only { display: flex; }
+@media (min-width: 900px) {
+  .phone-only { display: none; }
+  .inv-cols { display: grid; grid-template-columns: repeat(3, 1fr); align-items: start; }
+  .inv-col { display: flex; }
 }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
