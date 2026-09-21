@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 9: soft map) */
+/* J EMPIRE SERVER — style.css (version 10: slim invoice picker, invoice details, office hub) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -345,17 +345,38 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 .settings input { min-height: 46px; font-size: 1rem; border: 1px solid var(--line); border-radius: 10px; padding: 0 0.6rem; font-family: var(--sans); color: var(--navy); }
 .tag.navy { background: var(--navy); border-color: var(--navy); color: #F2E6C9; }
 .sheet.wide { max-width: 52rem; }
-.pick-list { display: flex; flex-direction: column; gap: 0.4rem; }
-.pick-row { display: flex; align-items: center; gap: 0.6rem; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.5rem 0.6rem; }
+.pick-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.pick-row { display: flex; align-items: center; gap: 0.55rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 0.3rem 0.6rem; min-height: 52px; }
 .pick-row.on { border: 2px solid var(--navy); }
 .pick-row.locked { opacity: 0.55; }
 .pick-row input { width: 24px; height: 24px; flex-shrink: 0; }
+.pick-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pick-name { font-weight: 700; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-sub { font-size: 0.8rem; color: var(--navy-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-sub .tag { font-size: 0.68rem; padding: 0 0.3rem; }
+.pick-sub .ok { color: var(--green); font-weight: 700; } .pick-sub .bad { color: var(--red); font-weight: 700; }
+.pick-amt { flex-shrink: 0; font-size: 0.95rem; }
 .pick-row .draft-text span { display: block; }
 .pick-right { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; flex-shrink: 0; }
 .draft-later.ok { color: var(--green); } .draft-later.bad { color: var(--red); }
 .inv-sum { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.6rem 0.8rem; }
 .inv-sum div { display: flex; justify-content: space-between; font-weight: 600; padding: 0.15rem 0; }
 .inv-sum .due { font-family: var(--serif); font-size: 1.5rem; font-weight: 700; border-top: 2px solid var(--navy); margin-top: 0.3rem; padding-top: 0.3rem; }
+/* invoice details + office hub */
+.inv-jobs summary { cursor: pointer; font-weight: 700; color: var(--navy); padding: 0.4rem 0; min-height: 44px; }
+.inv-sec { font-size: 0.78rem; font-weight: 700; letter-spacing: 1.5px; color: var(--gold-text); margin-top: 0.4rem; text-transform: uppercase; }
+.inv-line { display: flex; gap: 0.5rem; font-size: 0.92rem; padding: 0.25rem 0; border-bottom: 1px solid var(--line); }
+.il-n { width: 1.8rem; flex-shrink: 0; color: var(--navy-2); }
+.il-no { width: 7.5rem; flex-shrink: 0; font-weight: 700; }
+.il-name { flex: 1; min-width: 0; }
+.il-amt { flex-shrink: 0; font-weight: 700; }
+.hub { gap: 0.7rem; }
+.hub-btn { display: flex; align-items: center; gap: 0.9rem; text-align: left; background: var(--paper); border: 2px solid var(--navy); border-radius: 16px; padding: 1rem; font-size: 1.1rem; }
+.hub-btn > span:last-child { display: flex; flex-direction: column; gap: 0.2rem; }
+.hub-btn .muted { font-size: 0.85rem; }
+.hub-num { width: 2.6rem; height: 2.6rem; flex-shrink: 0; border-radius: 50%; background: var(--navy); color: #F2E6C9; display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 1.4rem; font-weight: 700; }
+.tabs-top .tab { padding: 0 0.7rem; }
+
 @media (min-width: 900px) {
   .money-grid { grid-template-columns: repeat(3, 1fr); }
 }

@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 2: invoice defaults to this Thu–Thu week)
+// J EMPIRE SERVER — office.js (version 3: auto default prices, Invoices tab with job details, slimmer picker)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -34,7 +34,16 @@
     ]);
     const settings = {};
     (sets.data || []).forEach((r) => { settings[r.key] = r.value; });
-    return { jobs: jobs.data || [], invoices: invs.data || [], expenses: exps.data || [], settings, error: jobs.error || invs.error };
+    const list = jobs.data || [];
+    // Any job still at $0 (and not already billed) picks up its client's default price
+    const dp = settings.default_prices || {};
+    const fix = {};
+    list.forEach((j) => {
+      const def = Number(dp[j.client] || 0);
+      if (def > 0 && !Number(j.price) && !j.invoice_id) { j.price = def; (fix[j.client] = fix[j.client] || []).push(j.id); }
+    });
+    await Promise.all(Object.keys(fix).map((c) => db.from("jes_jobs").update({ price: Number(dp[c]) }).in("id", fix[c])));
+    return { jobs: list, invoices: invs.data || [], expenses: exps.data || [], settings, error: jobs.error || invs.error };
   }
   async function upd(table, id, patch) {
     const { error } = await J().db.from(table).update(patch).eq("id", id);
@@ -93,9 +102,77 @@
   }
 
   // =====================================================================
-  // MONEY & INVOICES TAB
+  // OFFICE HUB (iPhone "Office" tab)
+  // =====================================================================
+  function drawHub() {
+    byId("screen").innerHTML = `<section class="office hub">
+      <h1>Office</h1>
+      <button class="hub-btn" data-go="done"><span class="hub-num">4</span><span><b>Done checklist</b><span class="muted">Check each finished job in the client's app</span></span></button>
+      <button class="hub-btn" data-go="invoices"><span class="hub-num">5</span><span><b>Invoices</b><span class="muted">Jean · Ody's · Private — build, print, mark paid</span></span></button>
+      <button class="hub-btn" data-go="money"><span class="hub-num">6</span><span><b>Money</b><span class="muted">Earnings, costs, profit, settings</span></span></button>
+    </section>`;
+  }
+
+  // =====================================================================
+  // INVOICES TAB (step 5)
   // =====================================================================
   let invFilter = "All";
+  async function drawInvoices() {
+    const { esc, money } = J();
+    byId("screen").innerHTML = `<section class="office"><p class="muted">Loading…</p></section><div class="sheet-back" id="sheetBack" hidden></div>`;
+    const D = await load();
+    if (D.error) { byId("screen").querySelector(".office").innerHTML = `<div class="alert">Couldn't load: ${esc(D.error.message)}</div>`; return; }
+    const notBilled = D.jobs.filter((j) => isDone(j) && !j.invoice_id && !j.paid_upfront && j.client !== "ABC Legal").length;
+    const invs = D.invoices.filter((i) => invFilter === "All" || i.grp === invFilter);
+    byId("screen").querySelector(".office").innerHTML = `
+      <div class="jobs-head"><h1>Invoices</h1><button class="btn" id="mNewInv">+ New Invoice</button></div>
+      ${notBilled ? `<button class="alert tap" id="mNotBilled">${notBilled} finished job${notBilled > 1 ? "s are" : " is"} not on an invoice yet. Tap to start one.</button>` : ""}
+      <div class="chips" id="iFilter">${["All", "Jean", "Ody's", "Private"].map((f) => `<button class="chip ${f === invFilter ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
+      <div class="inv-list">${invs.length ? invs.map((i) => `
+        <div class="inv-card ${i.status === "Paid" ? "paid" : "pending"}">
+          <div class="inv-top">
+            <div><div class="draft-name">${esc(i.grp)} · ${esc(i.period_start ? periodLabel(fromIso(i.period_start), fromIso(i.period_end)) : "")}</div>
+              <div class="draft-addr">${esc(i.bill_to || "")} · ${(i.lines || []).length} job${(i.lines || []).length === 1 ? "" : "s"} · <b>${money(i.total)}</b> · ${esc(i.inv_no)}</div></div>
+            <span class="status-pill">${i.status === "Paid" ? "PAID " + esc(i.paid_on ? mdy(fromIso(i.paid_on)) : "") : "PENDING PAYMENT"}</span>
+          </div>
+          <details class="inv-jobs"><summary>See the ${(i.lines || []).length} job${(i.lines || []).length === 1 ? "" : "s"} on this invoice</summary>
+            ${(i.lines || []).map((l, k, arr) => `${k === 0 || arr[k - 1].section !== l.section ? `<div class="inv-sec">${esc(l.section)}</div>` : ""}
+              <div class="inv-line"><span class="il-n">${l.n}.</span><span class="il-no">${esc(l.job_no ? "#" + l.job_no : "no job #")}</span><span class="il-name">${esc(l.name)}</span><span class="il-amt">${money(l.price)}</span></div>`).join("")}
+          </details>
+          <div class="row-gap wrap">
+            ${i.status === "Paid"
+              ? `<button class="btn ghost thin" data-unpay="${i.id}">Mark unpaid</button>`
+              : `<label class="paid-on">Paid on <input type="date" data-date="${i.id}" value="${isoDay(new Date())}"></label><button class="btn go thin" data-pay="${i.id}">Mark Paid</button>`}
+            <button class="btn ghost thin" data-print="${i.id}">Print</button>
+            <button class="btn ghost thin danger" data-del="${i.id}">Delete</button>
+          </div>
+        </div>`).join("") : `<p class="muted">No invoices yet.</p>`}</div>
+      <div id="printSheet" class="print-only"></div>`;
+
+    byId("iFilter").onclick = (e) => { const b = e.target.closest("[data-f]"); if (b) { invFilter = b.dataset.f; drawInvoices(); } };
+    byId("mNewInv").onclick = () => newInvoice(D);
+    if (byId("mNotBilled")) byId("mNotBilled").onclick = () => newInvoice(D);
+    const scr = byId("screen");
+    scr.querySelectorAll("[data-pay]").forEach((b) => b.onclick = async () => {
+      const d = scr.querySelector(`[data-date="${b.dataset.pay}"]`).value;
+      if (!d) { J().toast("Pick the date it was paid"); return; }
+      if (await upd("jes_invoices", b.dataset.pay, { status: "Paid", paid_on: d })) { J().toast("Marked paid ✓"); drawInvoices(); }
+    });
+    scr.querySelectorAll("[data-unpay]").forEach((b) => b.onclick = async () => {
+      if (await upd("jes_invoices", b.dataset.unpay, { status: "Pending", paid_on: null })) drawInvoices();
+    });
+    scr.querySelectorAll("[data-print]").forEach((b) => b.onclick = () => printInvoice(D.invoices.find((i) => i.id === b.dataset.print)));
+    scr.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
+      if (!confirm("Delete this invoice? Its jobs go back to 'not invoiced' so you can bill them again.")) return;
+      await J().db.from("jes_jobs").update({ invoice_id: null }).eq("invoice_id", b.dataset.del);
+      const { error } = await J().db.from("jes_invoices").delete().eq("id", b.dataset.del);
+      J().toast(error ? "Not deleted: " + error.message : "Invoice deleted"); drawInvoices();
+    });
+  }
+
+  // =====================================================================
+  // MONEY TAB (step 6)
+  // =====================================================================
   async function drawMoney() {
     const { esc, money } = J();
     byId("screen").innerHTML = `<section class="office"><p class="muted">Loading…</p></section><div class="sheet-back" id="sheetBack" hidden></div>`;
@@ -113,42 +190,19 @@
       + D.jobs.filter((j) => j.paid_upfront && inWeek(j.done_at)).reduce((s, j) => s + Number(j.price || 0), 0);
     const attempting = D.jobs.filter((j) => j.status === "Active" && (j.attempt_count || 0) > 0).length;
     const goal = Number(D.settings.weekly_goal || 500);
-    const notBilled = D.jobs.filter((j) => isDone(j) && !j.invoice_id && !j.paid_upfront && j.client !== "ABC Legal").length;
 
-    const invs = D.invoices.filter((i) => invFilter === "All" || i.grp === invFilter);
     byId("screen").querySelector(".office").innerHTML = `
-      <div class="jobs-head"><h1>Money &amp; Invoices</h1><span class="muted">Week: ${esc(periodLabel(ws, we))}</span></div>
+      <div class="jobs-head"><h1>Money</h1><span class="muted">Week: ${esc(periodLabel(ws, we))}</span></div>
       <div class="glance money-grid">
         <div class="tile green"><div class="tile-label">Earned this week</div><div class="tile-value">${money(earned)}</div><div class="tile-sub">${doneWeek.length} done · goal ${money(goal)}</div>
           <div class="bar"><span style="width:${Math.min(100, goal ? earned / goal * 100 : 0)}%"></span></div></div>
         <div class="tile"><div class="tile-label">Gas, tolls &amp; costs</div><div class="tile-value">${money(costs)}</div><div class="tile-sub">${milesWeek ? milesWeek.toFixed(0) + " miles logged" : "Nothing logged yet"}</div></div>
         <div class="tile green"><div class="tile-label">Real profit</div><div class="tile-value">${money(earned - costs)}</div><div class="tile-sub">Earned minus costs</div></div>
-        <div class="tile red"><div class="tile-label">Owed to you</div><div class="tile-value">${money(owed)}</div><div class="tile-sub">Pending invoices</div></div>
+        <button class="tile red" data-go="invoices"><div class="tile-label">Owed to you ›</div><div class="tile-value">${money(owed)}</div><div class="tile-sub">Pending invoices</div></button>
         <div class="tile green"><div class="tile-label">Paid this week</div><div class="tile-value">${money(paidWeek)}</div><div class="tile-sub">Money received</div></div>
-        <div class="tile"><div class="tile-label">Still attempting</div><div class="tile-value">${attempting}</div><div class="tile-sub">Not counted as money yet</div></div>
+        <button class="tile" data-go="jobs" data-filter="Active"><div class="tile-label">Still attempting ›</div><div class="tile-value">${attempting}</div><div class="tile-sub">Not counted as money yet</div></button>
       </div>
-      ${notBilled ? `<button class="alert tap" id="mNotBilled">${notBilled} finished job${notBilled > 1 ? "s are" : " is"} not on an invoice yet. Tap to start one.</button>` : ""}
-      <div class="row-gap wrap">
-        <button class="btn" id="mNewInv">+ New Invoice</button>
-        <button class="btn ghost" id="mExpense">+ Log gas / tolls / miles</button>
-      </div>
-      <h2>Invoice History</h2>
-      <div class="chips" id="iFilter">${["All", "Jean", "Ody's", "Private"].map((f) => `<button class="chip ${f === invFilter ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
-      <div class="inv-list">${invs.length ? invs.map((i) => `
-        <div class="inv-card ${i.status === "Paid" ? "paid" : "pending"}">
-          <div class="inv-top">
-            <div><div class="draft-name">${esc(i.grp)} · ${esc(i.period_start ? periodLabel(fromIso(i.period_start), fromIso(i.period_end)) : "")}</div>
-              <div class="draft-addr">${esc(i.bill_to || "")} · ${(i.lines || []).length} job${(i.lines || []).length === 1 ? "" : "s"} · <b>${money(i.total)}</b> · ${esc(i.inv_no)}</div></div>
-            <span class="status-pill">${i.status === "Paid" ? "PAID " + esc(i.paid_on ? mdy(fromIso(i.paid_on)) : "") : "PENDING PAYMENT"}</span>
-          </div>
-          <div class="row-gap wrap">
-            ${i.status === "Paid"
-              ? `<button class="btn ghost thin" data-unpay="${i.id}">Mark unpaid</button>`
-              : `<label class="paid-on">Paid on <input type="date" data-date="${i.id}" value="${isoDay(new Date())}"></label><button class="btn go thin" data-pay="${i.id}">Mark Paid</button>`}
-            <button class="btn ghost thin" data-print="${i.id}">Print</button>
-            <button class="btn ghost thin danger" data-del="${i.id}">Delete</button>
-          </div>
-        </div>`).join("") : `<p class="muted">No invoices yet.</p>`}</div>
+      <div class="row-gap wrap"><button class="btn ghost" id="mExpense">+ Log gas / tolls / miles</button></div>
       ${expWeek.length ? `<h2>This week's costs</h2><div class="exp-list">${expWeek.map((e) => `
         <div class="exp-line"><span>${esc(mdy(fromIso(e.day)))} · <b>${esc(e.kind)}</b>${e.miles ? " · " + esc(e.miles) + " mi" : ""}${e.note ? " · " + esc(e.note) : ""}</span>
         <span>${money(e.amount)} <button class="icon-btn small-x" data-delexp="${e.id}" aria-label="Delete this cost">✕</button></span></div>`).join("")}</div>` : ""}
@@ -159,30 +213,11 @@
         </div>
         <label>Home address (route start)<input id="sHome" value="${esc(D.settings.home_address || "")}"></label>
         <button class="btn" id="sSave">Save settings</button>
-        <p class="muted small">New jobs use these default prices. You can still change any single job's price.</p>
-      </details>
-      <div id="printSheet" class="print-only"></div>`;
+        <p class="muted small">Any job still at $0 that isn't on an invoice automatically picks up its client's default price. You can still change any single job.</p>
+      </details>`;
 
-    byId("iFilter").onclick = (e) => { const b = e.target.closest("[data-f]"); if (b) { invFilter = b.dataset.f; drawMoney(); } };
-    byId("mNewInv").onclick = () => newInvoice(D);
-    if (byId("mNotBilled")) byId("mNotBilled").onclick = () => newInvoice(D);
     byId("mExpense").onclick = () => addExpense();
     const scr = byId("screen");
-    scr.querySelectorAll("[data-pay]").forEach((b) => b.onclick = async () => {
-      const d = scr.querySelector(`[data-date="${b.dataset.pay}"]`).value;
-      if (!d) { J().toast("Pick the date it was paid"); return; }
-      if (await upd("jes_invoices", b.dataset.pay, { status: "Paid", paid_on: d })) { J().toast("Marked paid ✓"); drawMoney(); }
-    });
-    scr.querySelectorAll("[data-unpay]").forEach((b) => b.onclick = async () => {
-      if (await upd("jes_invoices", b.dataset.unpay, { status: "Pending", paid_on: null })) drawMoney();
-    });
-    scr.querySelectorAll("[data-print]").forEach((b) => b.onclick = () => printInvoice(D.invoices.find((i) => i.id === b.dataset.print)));
-    scr.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
-      if (!confirm("Delete this invoice? Its jobs go back to 'not invoiced' so you can bill them again.")) return;
-      await J().db.from("jes_jobs").update({ invoice_id: null }).eq("invoice_id", b.dataset.del);
-      const { error } = await J().db.from("jes_invoices").delete().eq("id", b.dataset.del);
-      J().toast(error ? "Not deleted: " + error.message : "Invoice deleted"); drawMoney();
-    });
     scr.querySelectorAll("[data-delexp]").forEach((b) => b.onclick = async () => {
       if (!confirm("Delete this cost?")) return;
       await J().db.from("jes_expenses").delete().eq("id", b.dataset.delexp); drawMoney();
@@ -197,7 +232,7 @@
       ];
       const { error } = await J().db.from("jes_settings").upsert(rows);
       try { localStorage.removeItem("jes_home_ll"); } catch (e) {}
-      J().toast(error ? "Not saved: " + error.message : "Settings saved"); drawMoney();
+      J().toast(error ? "Not saved: " + error.message : "Settings saved — $0 jobs updated"); drawMoney();
     };
   }
 
@@ -242,10 +277,11 @@
             const locked = !!j.invoice_id;
             return `<label class="pick-row ${st.picked.has(j.id) ? "on" : ""} ${locked ? "locked" : ""}">
               <input type="checkbox" data-pick="${j.id}" ${st.picked.has(j.id) ? "checked" : ""} ${locked ? "disabled" : ""}>
-              <span class="draft-text"><span class="draft-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
-                <span class="draft-addr">${esc(j.client)} · ${esc(j.address || "")}</span>
-                <span class="draft-later ${verified(j) ? "ok" : "bad"}">${locked ? "Already on an invoice" : verified(j) ? "Checked in " + esc(j.client) + "'s app ✓" : "Not fully checked in " + esc(j.client) + "'s app yet"}</span></span>
-              <span class="pick-right">${tag}<b>${money(j.price)}</b></span>
+              <span class="pick-main">
+                <span class="pick-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
+                <span class="pick-sub">${esc(j.client)} · ${tag} · <span class="${verified(j) ? "ok" : "bad"}">${locked ? "on an invoice" : verified(j) ? "checked ✓" : "not checked"}</span></span>
+              </span>
+              <b class="pick-amt">${money(j.price)}</b>
             </label>`;
           }).join("") : `<p class="muted">No ${esc(st.grp)} jobs to show.</p>`}</div>
           <div class="inv-sum">
@@ -286,7 +322,9 @@
       await J().db.from("jes_jobs").update({ invoice_id: data.id }).in("id", lines.map((l) => l.job_id));
       back.hidden = true; back.innerHTML = "";
       J().toast("Invoice saved — red until you mark it paid");
-      await drawMoney();
+      J().go("invoices");
+      // wait for the Invoices screen to finish loading before printing
+      for (let t = 0; t < 50 && !byId("printSheet"); t++) await new Promise((r) => setTimeout(r, 100));
       if (andPrint) printInvoice(data);
     }
     draw();
@@ -345,5 +383,5 @@
     };
   }
 
-  window.JES_OFFICE = { drawDone, drawMoney };
+  window.JES_OFFICE = { drawDone, drawInvoices, drawMoney, drawHub };
 })();

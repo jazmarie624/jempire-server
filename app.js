@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 7: Office hookup)
+// J EMPIRE SERVER — app.js (version 8: tabs in work order, Invoices + Money split)
 (function () {
   "use strict";
 
@@ -46,28 +46,30 @@
   }
 
   // ---------- sections ----------
+  // Tabs follow the order you actually work: add → check → route → verify → bill → money
   const TABS = [
-    { id: "home",   label: "Home" },
-    { id: "add",    label: "Add Jobs" },
-    { id: "jobs",   label: "Jobs" },
-    { id: "route",  label: "Route" },
-    { id: "done",   label: "Done" },
-    { id: "money",  label: "Money & Invoices" }
+    { id: "home",     label: "Home" },
+    { id: "add",      label: "1 Add Jobs" },
+    { id: "jobs",     label: "2 Jobs" },
+    { id: "route",    label: "3 Route" },
+    { id: "done",     label: "4 Done" },
+    { id: "invoices", label: "5 Invoices" },
+    { id: "money",    label: "6 Money" }
   ];
-  // iPhone bottom bar keeps it short; Done + Money live under "Office"
+  // iPhone bottom bar keeps it short; steps 4–6 live under "Office"
   const PHONE_TABS = [
     { id: "home", label: "Home" },
-    { id: "add", label: "Add Jobs" },
-    { id: "jobs", label: "Jobs" },
-    { id: "route", label: "Route" },
-    { id: "office", label: "Office" }
+    { id: "add", label: "1 Add" },
+    { id: "jobs", label: "2 Jobs" },
+    { id: "route", label: "3 Route" },
+    { id: "office", label: "4–6 Office" }
   ];
   let current = "home";
 
   function drawTabs() {
     $(".tabs-top").innerHTML = TABS.map((t) =>
       `<button class="tab" data-go="${t.id}" ${t.id === current ? 'aria-current="page"' : ""}>${esc(t.label)}</button>`).join("");
-    const phoneCur = (current === "done" || current === "money") ? "office" : current;
+    const phoneCur = ["done", "invoices", "money", "office"].includes(current) ? "office" : current;
     $(".tabs-bottom").innerHTML = PHONE_TABS.map((t) =>
       `<button class="tab" data-go="${t.id}" ${t.id === phoneCur ? 'aria-current="page"' : ""}>${esc(t.label)}</button>`).join("");
   }
@@ -79,7 +81,6 @@
   });
 
   function go(id, filter) {
-    if (id === "office") id = "money";
     current = id;
     drawTabs();
     window.scrollTo(0, 0);
@@ -89,7 +90,9 @@
       jobs: () => (window.JES_JOBS ? window.JES_JOBS.drawJobs(filter ? { filter } : null) : comingSoon("jobs")),
       route: () => (window.JES_JOBS ? window.JES_JOBS.drawRoute() : comingSoon("route")),
       done: () => (window.JES_OFFICE ? window.JES_OFFICE.drawDone() : comingSoon("done")),
-      money: () => (window.JES_OFFICE ? window.JES_OFFICE.drawMoney() : comingSoon("money"))
+      invoices: () => (window.JES_OFFICE ? window.JES_OFFICE.drawInvoices() : comingSoon("invoices")),
+      money: () => (window.JES_OFFICE ? window.JES_OFFICE.drawMoney() : comingSoon("money")),
+      office: () => (window.JES_OFFICE ? window.JES_OFFICE.drawHub() : comingSoon("money"))
     };
     (screens[id] || drawHome)(id);
   }
@@ -139,7 +142,7 @@
           <button class="tile" data-go="jobs" data-filter="On Hold"><div class="tile-label">On hold ›</div><div class="tile-value">…</div><div class="tile-sub">Kept, not routed</div></button>
           <button class="tile red" data-go="jobs" data-filter="Needs address"><div class="tile-label">Need fixing ›</div><div class="tile-value">…</div><div class="tile-sub">Red jobs</div></button>
           <button class="tile green" data-go="money"><div class="tile-label">This week ›</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></button>
-          <button class="tile red" data-go="money"><div class="tile-label">Pending payment ›</div><div class="tile-value">…</div><div class="tile-sub">Unpaid invoices</div></button>
+          <button class="tile red" data-go="invoices"><div class="tile-label">Pending payment ›</div><div class="tile-value">…</div><div class="tile-sub">Unpaid invoices</div></button>
         </div>
       </section>`;
     document.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
@@ -195,13 +198,13 @@
     if (forgot.length) alerts.push(`${forgot.length} finished job${forgot.length > 1 ? "s are" : " is"} over a week old and not on an invoice yet.`);
 
     $("#alerts").innerHTML = alerts.length
-      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" ${/invoice/.test(a) ? 'data-go="money"' : /address/.test(a) ? 'data-go="jobs" data-filter="Needs address"' : 'data-go="jobs" data-filter="Active"'}>${esc(a)}</button>`).join("")}</div>`
+      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" ${/invoice/.test(a) ? 'data-go="invoices"' : /address/.test(a) ? 'data-go="jobs" data-filter="Needs address"' : 'data-go="jobs" data-filter="Active"'}>${esc(a)}</button>`).join("")}</div>`
       : "";
   }
 
   function comingSoon(id) {
     const piece = { add: "Piece 2 (Smart Intake)", jobs: "Piece 3 (Jobs + Route)", route: "Piece 3 (Jobs + Route)", done: "Piece 4 (Office)", money: "Piece 4 (Office)" }[id];
-    $("#screen").innerHTML = `<div class="card coming"><h2>${esc(TABS.find((t) => t.id === id).label)}</h2><p class="muted">This screen arrives in ${piece}.</p></div>`;
+    $("#screen").innerHTML = `<div class="card coming"><h2>${esc((TABS.find((t) => t.id === id) || { label: "Office" }).label)}</h2><p class="muted">This screen arrives in ${piece}.</p></div>`;
   }
 
   // ---------- first-time setup screen ----------
