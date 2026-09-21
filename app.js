@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 2: + Smart Intake hookup)
+// J EMPIRE SERVER — app.js (version 3: ZIP check fix)
 (function () {
   "use strict";
 
@@ -105,7 +105,7 @@
     return d;
   }
   function needsFixing(j) {
-    return !j.client || !j.address || !j.county || !/\b\d{5}\b/.test(j.address || "");
+    return !j.client || !j.address || !j.county || !/\b(?:FL|Florida)\b[\s,]*\d{5}/i.test(j.address || "");
   }
 
   async function drawHome() {

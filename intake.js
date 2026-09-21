@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 1: Smart Intake)
+// J EMPIRE SERVER — intake.js (version 3: roomy notes box)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -11,7 +11,7 @@
 
   const RULES = {
     "ABC Legal": "Keeps: order #, name, price, address, serve-by date, attempt instructions, vehicles. Ignores: Details, Photos, History, Deliver To, and the other menu words.",
-    "Ody's": "Keeps: Standard or Rush, name, ODY job #. Ody's never sends an address, so each job stays red until you add one. Paste several at once.",
+    "Ody's": "Keeps: Standard or Rush, name, ODY job #, C/O line (to notes), and the address when it's included. Paste several at once.",
     "ProVest": "Keeps: each address as its own job. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
     "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map.",
     "Private": "Makes a blank job for you to fill in. If you paste an address, it's filled in for you."
@@ -23,9 +23,17 @@
   const OSCEOLA_CITIES = ["kissimmee", "st cloud", "st. cloud", "saint cloud", "celebration", "poinciana", "kenansville", "harmony", "narcoossee", "kindred", "intercession city", "campbell"];
   const ORANGE_CITIES = ["orlando", "winter park", "apopka", "ocoee", "winter garden", "windermere", "maitland", "oakland", "belle isle", "edgewood", "eatonville", "gotha", "pine hills", "lake buena vista", "zellwood", "christmas", "bithlo"];
 
+  // A ZIP only counts if it follows FL (or ends the address) — not the house number
+  function zipOf(address) {
+    const a = address || "";
+    const m = a.match(/\b(?:FL|Florida)\b[\s,]*(\d{5})(?:-\d{4})?/i) || a.match(/,\s*(\d{5})(?:-\d{4})?\s*$/);
+    return m ? m[1] : "";
+  }
+  const hasZip = (a) => !!zipOf(a);
+
   function countyFor(address) {
     const a = (address || "").toLowerCase();
-    const zip = (a.match(/\b(\d{5})(?:-\d{4})?\b(?!.*\b\d{5}\b)/) || [])[1];
+    const zip = zipOf(address);
     if (zip) {
       if (OSCEOLA_ZIPS.includes(zip)) return "Osceola";
       if (ORANGE_ZIPS.includes(zip) || /^32[78]\d\d$/.test(zip)) return "Orange";
@@ -102,7 +110,13 @@
       const si = ls.findIndex((l) => STREET_START.test(l));
       if (si >= 0) {
         let addr = ls[si];
-        if (!/\b\d{5}\b/.test(addr) && ls[si + 1] && /\b(FL|Florida)\b/i.test(ls[si + 1])) addr += ", " + ls[si + 1];
+        // join the next lines (apt/unit, then city/state/ZIP) until the ZIP shows up
+        for (let j = si + 1; j < Math.min(ls.length, si + 4) && !hasZip(addr); j++) {
+          const l = ls[j];
+          if (/^(=?\s*instructions?|serve|vehicles?|deadline|bo)$/i.test(l) || /\$/.test(l)) break;
+          if (hasZip(l) || /\b(FL|Florida)\b/i.test(l) || /^(apt|unit|ste|suite|#|lot|bldg|building)\b/i.test(l)) addr += ", " + l;
+          else break;
+        }
         d.address = cleanAddress(addr);
       }
 
@@ -129,29 +143,54 @@
   }
 
   // ---------- Ody's ----------
+  // Handles both layouts: job # on top of the block, or job # at the bottom.
   function parseOdys(text, extra) {
     const ls = removeIgnored(lines(text), extra);
-    const idx = [];
-    ls.forEach((l, i) => { if (/^ODY\s*[—–\-:]*\s*\d{6,}/i.test(l)) idx.push(i); });
-    if (!idx.length) {
-      const d = blankDraft("Ody's"); d.raw_text = text.trim(); return [d];
-    }
+    const isMarker = (l) => /^ODY\s*[—–\-:]*\s*\d{6,}/i.test(l);
     const isService = (l) => /^(standard|rush|rushed|stand|standa|standar|ru|rus)$/i.test(l);
-    return idx.map((at, n) => {
+    const isCO = (l) => /^(c\/o|attn|attention)\b/i.test(l);
+    const isCity = (l) => /\b(FL|Florida)\b[\s,]*\d{5}/i.test(l);
+    const idx = [];
+    ls.forEach((l, i) => { if (isMarker(l)) idx.push(i); });
+
+    let blocks;
+    if (!idx.length) blocks = [ls];
+    else {
+      const headerFirst = ls.slice(0, idx[0]).every((l) => isService(l) || /^ODY$/i.test(l));
+      // a Standard/Rush line sitting right above a job # belongs to that job
+      const startOf = (at) => (at > 0 && isService(ls[at - 1]) ? at - 1 : at);
+      blocks = headerFirst
+        ? idx.map((at, n) => ls.slice(n === 0 ? 0 : startOf(at), n + 1 < idx.length ? startOf(idx[n + 1]) : ls.length))
+        : idx.map((at, n) => ls.slice(n === 0 ? 0 : idx[n - 1] + 1, at + 1));
+    }
+
+    return blocks.map((bl) => {
       const d = blankDraft("Ody's");
-      d.job_no = ls[at].match(/(\d{6,})/)[1];
-      const start = n === 0 ? 0 : idx[n - 1] + 1;
-      const end = n + 1 < idx.length ? idx[n + 1] : ls.length;
-      const before = ls.slice(start, at);
-      const after = ls.slice(at + 1, end);
-      const nameLine = [...before].reverse().find((l) => !isService(l) && !/^ODY$/i.test(l) && !STREET_START.test(l));
-      if (nameLine) d.person = titleCase(nameLine);
-      const nameAt = nameLine ? before.lastIndexOf(nameLine) : before.length;
-      const svcLine = before.slice(0, nameAt).reverse().find(isService) || "";
-      d.service = /^ru/i.test(svcLine) ? "Rush" : "Standard";
-      const addr = before.concat(after).find((l) => STREET_START.test(l) && /[A-Za-z]{3}/.test(l));
-      if (addr) { d.address = cleanAddress(addr); d.county = countyFor(d.address); }
-      d.raw_text = before.concat([ls[at]]).join("\n");
+      d.raw_text = bl.join("\n");
+      const marker = bl.find(isMarker);
+      if (marker) d.job_no = marker.match(/(\d{6,})/)[1];
+      const body = bl.filter((l) => !isMarker(l) && !/^ODY$/i.test(l));
+
+      const pi = body.findIndex((l) => !isService(l) && !isCO(l) && !STREET_START.test(l) && !isCity(l));
+      if (pi >= 0) d.person = titleCase(body[pi]);
+
+      const co = body.find(isCO);
+      if (co) d.notes = titleCase(co.replace(/^(c\/o|attn|attention)\s*:?\s*/i, "C/O: "));
+
+      const si = body.findIndex((l) => STREET_START.test(l));
+      if (si >= 0) {
+        let addr = body[si];
+        for (let j = si + 1; j < Math.min(body.length, si + 3) && !hasZip(addr); j++) {
+          if (isCity(body[j]) || /^(apt|unit|ste|suite|#|lot|bldg)\b/i.test(body[j])) addr += ", " + body[j];
+          else break;
+        }
+        d.address = cleanAddress(addr);
+        d.county = countyFor(d.address);
+      }
+
+      const svcBefore = body.slice(0, pi >= 0 ? pi : body.length).reverse().find(isService);
+      const svc = svcBefore || body.find(isService) || "";
+      d.service = /^ru/i.test(svc) ? "Rush" : "Standard";
       return d;
     });
   }
@@ -188,7 +227,7 @@
     const isName = (l) => /^[A-Z][A-Z0-9&.,'\- ]*[A-Z.]$/.test(l) && /[A-Z]{2}/.test(l) &&
       !STREET_START.test(l) && !/^(OSCEOLA|ORANGE)( COUNTY)?$/.test(l) && !/^\d+$/.test(l);
     ls.forEach((l) => {
-      if (isName(l) && !(cur && cur.address && !/\b\d{5}\b/.test(cur.address) && /\b(FL|KISSIMMEE|ORLANDO)\b/.test(l))) {
+      if (isName(l) && !(cur && cur.address && !hasZip(cur.address) && /\b(FL|KISSIMMEE|ORLANDO)\b/.test(l))) {
         cur = { lines: [l], person: l, job_no: "", address: "", county: "" };
         jobs.push(cur);
         return;
@@ -198,7 +237,7 @@
       if (/^\d{5,7}$/.test(l) && !cur.job_no) { cur.job_no = l; return; }
       if (/^(OSCEOLA|ORANGE)( COUNTY)?$/i.test(l)) { cur.county = titleCase(l.replace(/ county/i, "")); return; }
       if (STREET_START.test(l) && !cur.address) { cur.address = l; return; }
-      if (cur.address && !/\b\d{5}\b/.test(cur.address) && /[A-Za-z]/.test(l)) { cur.address += ", " + l; }
+      if (cur.address && !hasZip(cur.address) && /[A-Za-z]/.test(l)) { cur.address += ", " + l; }
     });
     return jobs.map((j) => {
       const d = blankDraft("Userve");
@@ -234,7 +273,7 @@
     const p = [];
     if (!d.client) p.push("Client missing");
     if (!d.address) p.push("Address missing");
-    else if (!/\b\d{5}\b/.test(d.address)) p.push("ZIP missing");
+    else if (!hasZip(d.address)) p.push("ZIP missing");
     if (!d.county) p.push("County missing");
     if (existing) {
       const dupNo = d.job_no && existing.some((e) => e.job_no && e.client === d.client && e.job_no === d.job_no);
@@ -404,7 +443,7 @@
           <label>County<select id="f_county">${opt(["", "Osceola", "Orange", "Other"], d.county)}</select></label>
           <label>Due date<input id="f_due_date" type="date" value="${esc(d.due_date)}"></label>
         </div>
-        <label>Notes<textarea id="f_notes" rows="2">${esc(d.notes)}</textarea></label>
+        <label>Notes<textarea id="f_notes" class="notes-box" rows="5">${esc(d.notes)}</textarea></label>
         <div class="private-only" ${d.client === "Private" ? "" : "hidden"}>
           <div class="grid2">
             <label>Client phone<input id="f_private_phone" inputmode="tel" value="${esc(d.private_phone)}"></label>
@@ -419,6 +458,9 @@
         </div>
       </div>`;
     const $f = (k) => document.getElementById("f_" + k);
+    // Boxes grow to fit everything typed — no tiny scrolling inside them
+    const grow = (el) => { el.style.height = "auto"; el.style.height = (el.scrollHeight + 4) + "px"; };
+    back.querySelectorAll("textarea").forEach((t) => { grow(t); t.addEventListener("input", () => grow(t)); });
     $f("client").onchange = () => { back.querySelector(".private-only").hidden = $f("client").value !== "Private"; };
     $f("address").onblur = () => {
       const cleaned = window.JES_PARSE.cleanAddress($f("address").value);

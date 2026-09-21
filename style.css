@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 2: + Smart Intake) */
+/* J EMPIRE SERVER — style.css (version 4: roomy notes) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -160,7 +160,7 @@ h2 { font-size: 1.5rem; }
   border: 1px solid var(--line); border-radius: 12px; padding: 0.6rem 0.7rem; background: var(--paper); resize: vertical;
 }
 .rule { margin: 0; font-size: 0.85rem; color: var(--navy-2); }
-.ignore summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.ignore summary { cursor: pointer; font-weight: 600; padding: 0.7rem 0; }
 .ignore textarea { width: 100%; font-size: 0.9rem; border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem; font-family: var(--sans); margin-bottom: 0.5rem; }
 .summary { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem; font-weight: 700; font-size: 0.9rem; }
 .ok { color: var(--green); } .bad { color: var(--red); }
@@ -203,6 +203,8 @@ h2 { font-size: 1.5rem; }
   font-size: 1rem; font-family: var(--sans); color: var(--navy); min-height: 46px;
   border: 1px solid var(--line); border-radius: 10px; padding: 0.4rem 0.6rem; background: #fff;
 }
+.sheet textarea { line-height: 1.5; resize: none; overflow: hidden; }
+.sheet .notes-box { min-height: 7.5rem; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 .raw { white-space: pre-wrap; font-size: 0.8rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem; }
 .sheet-btns { display: flex; gap: 0.6rem; justify-content: space-between; }
