@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 4: stuck-job reminders on Home)
+// J EMPIRE SERVER — app.js (version 5: Jobs + Route hookup)
 (function () {
   "use strict";
 
@@ -83,7 +83,13 @@
     current = id;
     drawTabs();
     window.scrollTo(0, 0);
-    const screens = { home: drawHome, add: () => (window.JES_INTAKE ? window.JES_INTAKE.draw() : comingSoon("add")), jobs: comingSoon, route: comingSoon, done: comingSoon, money: comingSoon };
+    const screens = {
+      home: drawHome,
+      add: () => (window.JES_INTAKE ? window.JES_INTAKE.draw() : comingSoon("add")),
+      jobs: () => (window.JES_JOBS ? window.JES_JOBS.drawJobs() : comingSoon("jobs")),
+      route: () => (window.JES_JOBS ? window.JES_JOBS.drawRoute() : comingSoon("route")),
+      done: comingSoon, money: comingSoon
+    };
     (screens[id] || drawHome)(id);
   }
 

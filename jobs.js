@@ -1,0 +1,468 @@
+// J EMPIRE SERVER — jobs.js (version 1: Jobs list + Route + real map)
+(function () {
+  "use strict";
+  const J = () => window.JES;
+  const P = () => window.JES_PARSE;
+  const $ = (s) => document.querySelector(s);
+  const byId = (id) => document.getElementById(id);
+
+  const needsAddress = (j) => !j.address || !P().hasZip(j.address) || !j.county;
+  const isDone = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
+
+  async function fetchJobs() {
+    const { data, error } = await J().db.from("jes_jobs").select("*").order("created_at", { ascending: false });
+    if (error) { J().toast("Couldn't load jobs: " + error.message); return []; }
+    return data;
+  }
+  async function updateJob(id, patch) {
+    patch.updated_at = new Date().toISOString();
+    const { error } = await J().db.from("jes_jobs").update(patch).eq("id", id);
+    if (error) J().toast("Not saved: " + error.message);
+    return !error;
+  }
+  async function logAttempt(job, kind, note) {
+    await J().db.from("jes_attempts").insert({ job_id: job.id, kind, note: note || null });
+  }
+
+  // =====================================================================
+  // JOBS TAB
+  // =====================================================================
+  const JS = { filter: "Active", county: "All", q: "", jobs: [] };
+  const FILTERS = ["Active", "Needs address", "Today", "On Hold", "Done", "All"];
+
+  async function drawJobs(opts) {
+    if (opts && opts.filter) JS.filter = opts.filter;
+    const { esc } = J();
+    byId("screen").innerHTML = `
+      <section class="jobs">
+        <div class="jobs-head">
+          <h1>Jobs</h1>
+          <label class="sr" for="jq">Search</label>
+          <input id="jq" class="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
+        </div>
+        <div class="chips" id="jFilters">${FILTERS.map((f) => `<button class="chip ${f === JS.filter ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
+        <div class="chips" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="chip small ${c === JS.county ? "on" : ""}" data-c="${c}">${c === "All" ? "All counties" : c}</button>`).join("")}</div>
+        <div id="jList" class="jlist"><p class="muted">Loading…</p></div>
+      </section>
+      <div class="sheet-back" id="sheetBack" hidden></div>`;
+    byId("jFilters").onclick = (e) => { const b = e.target.closest("[data-f]"); if (b) { JS.filter = b.dataset.f; drawJobs(); } };
+    byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
+    byId("jq").oninput = (e) => { JS.q = e.target.value; drawList(); };
+    JS.jobs = await fetchJobs();
+    drawList();
+  }
+
+  function drawList() {
+    const { esc } = J();
+    const q = JS.q.toLowerCase().trim();
+    let list = JS.jobs.filter((j) => {
+      if (JS.county !== "All" && j.county !== JS.county) return false;
+      if (q && ![j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)) return false;
+      switch (JS.filter) {
+        case "Active": return j.status === "Active";
+        case "Needs address": return !isDone(j) && needsAddress(j);
+        case "Today": return j.on_today && j.status === "Active";
+        case "On Hold": return j.status === "On Hold";
+        case "Done": return isDone(j);
+        default: return true;
+      }
+    });
+    const dueRank = (j) => (j.due_date ? new Date(j.due_date).getTime() : 9e15);
+    list.sort((a, b) => (b.service === "Rush") - (a.service === "Rush") || dueRank(a) - dueRank(b));
+
+    const box = byId("jList");
+    if (!list.length) { box.innerHTML = `<p class="muted center">No jobs here.</p>`; return; }
+    box.innerHTML = `<p class="muted small">${list.length} job${list.length > 1 ? "s" : ""}</p>` + list.map((j) => {
+      const red = !isDone(j) && needsAddress(j);
+      const cls = red ? "is-red" : j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
+      const tags = [
+        j.service === "Rush" ? `<span class="rush">Rush</span>` : "",
+        j.status === "On Hold" ? `<span class="tag hold">On hold</span>` : "",
+        isDone(j) ? `<span class="tag done">${esc(j.status === "Served" ? "Served" : "Non-serve")}</span>` : "",
+        j.attempt_count && !isDone(j) ? `<span class="tag">Attempt ${j.attempt_count} of 5</span>` : ""
+      ].join(" ");
+      const canToday = j.status === "Active" && !red;
+      return `
+        <div class="draft ${cls}">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="draft-text">
+            <div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} ${tags}</div>
+            <div class="draft-addr">${red ? `<b>${esc(P().problems(j).join(" · "))}</b>${j.address ? " · " : ""}` : ""}${esc(j.address || "")}</div>
+            <div class="draft-later">${esc(j.client || "")}${j.county ? " · " + esc(j.county) : ""}${j.due_date ? " · Due " + esc(fmtDate(j.due_date)) : ""}</div>
+          </div>
+          ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today's route">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
+          <button class="icon-btn" data-open="${j.id}" aria-label="Edit ${esc(j.person || j.address || "job")}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
+          </button>
+        </div>`;
+    }).join("");
+    box.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs));
+    box.querySelectorAll("[data-today]").forEach((b) => b.onclick = async () => {
+      const j = JS.jobs.find((x) => x.id === b.dataset.today);
+      j.on_today = !j.on_today;
+      if (await updateJob(j.id, { on_today: j.on_today, route_order: null })) { drawList(); J().toast(j.on_today ? "Added to today" : "Removed from today"); }
+    });
+  }
+
+  function fmtDate(iso) {
+    const [y, m, d] = String(iso).slice(0, 10).split("-");
+    return `${m}/${d}/${y}`;
+  }
+
+  // ---------- edit a saved job ----------
+  async function openJob(j, after) {
+    const { esc } = J();
+    const back = byId("sheetBack");
+    const opt = (list, v) => list.map((o) => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("");
+    const { data: attempts } = await J().db.from("jes_attempts").select("*").eq("job_id", j.id).order("at", { ascending: true });
+    back.hidden = false;
+    back.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="jTitle">
+        <h2 id="jTitle">${esc(j.person || "Edit job")}</h2>
+        <div class="grid2">
+          <label>Status<select id="g_status">${opt(["Active", "On Hold", "Served", "Non-Serve Complete"], j.status)}</select></label>
+          <label>Standard / Rush<select id="g_service">${opt(["Standard", "Rush"], j.service)}</select></label>
+          <label>Client<select id="g_client">${opt(P().CLIENTS, j.client)}</select></label>
+          <label>Job #<input id="g_job_no" value="${esc(j.job_no || "")}"></label>
+        </div>
+        <label>Person to serve<input id="g_person" value="${esc(j.person || "")}"></label>
+        <label>Address<textarea id="g_address" rows="2">${esc(j.address || "")}</textarea></label>
+        <div class="grid2">
+          <label>County<select id="g_county">${opt(["", "Osceola", "Orange", "Other"], j.county || "")}</select></label>
+          <label>Due date<input id="g_due_date" type="date" value="${esc(j.due_date || "")}"></label>
+          <label>Price<input id="g_price" inputmode="decimal" value="${esc(j.price ?? 0)}"></label>
+          <label>Attempts<input id="g_attempt_count" inputmode="numeric" value="${esc(j.attempt_count || 0)}"></label>
+        </div>
+        <label>Notes<textarea id="g_notes" class="notes-box" rows="5">${esc(j.notes || "")}</textarea></label>
+        ${j.client === "Private" ? `<div class="grid2">
+          <label>Client phone<input id="g_private_phone" value="${esc(j.private_phone || "")}"></label>
+          <label>Client email<input id="g_private_email" value="${esc(j.private_email || "")}"></label></div>` : ""}
+        <div class="history">
+          <div class="tile-label">Attempt history</div>
+          ${(attempts || []).length ? attempts.map((a) => `<div class="hist-line"><b>${esc(a.kind)}</b> · ${esc(new Date(a.at).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }))}${a.note ? " · " + esc(a.note) : ""}</div>`).join("") : `<div class="muted small">No attempts yet.</div>`}
+        </div>
+        <details><summary>Original pasted text</summary><pre class="raw">${esc(j.raw_text || "(none)")}</pre></details>
+        <div class="sheet-btns">
+          <button class="btn ghost danger" id="gDelete">Delete</button>
+          <button class="btn ghost" id="gCancel">Cancel</button>
+          <button class="btn" id="gSave">Save</button>
+        </div>
+      </div>`;
+    const f = (k) => byId("g_" + k);
+    const grow = (el) => { el.style.height = "auto"; el.style.height = (el.scrollHeight + 4) + "px"; };
+    back.querySelectorAll("textarea").forEach((t) => { grow(t); t.addEventListener("input", () => grow(t)); });
+    f("address").onblur = () => {
+      f("address").value = P().cleanAddress(f("address").value);
+      if (!f("county").value) f("county").value = P().countyFor(f("address").value) || "";
+    };
+    const close = () => { back.hidden = true; back.innerHTML = ""; };
+    byId("gCancel").onclick = close;
+    back.onclick = (e) => { if (e.target === back) close(); };
+    byId("gDelete").onclick = async () => {
+      if (!confirm("Delete this job for good? This can't be undone.")) return;
+      const { error } = await J().db.from("jes_jobs").delete().eq("id", j.id);
+      if (error) { J().toast("Not deleted: " + error.message); return; }
+      close(); J().toast("Job deleted"); after && after();
+    };
+    byId("gSave").onclick = async () => {
+      const patch = {};
+      ["status", "service", "client", "job_no", "person", "county", "due_date", "notes", "private_phone", "private_email"].forEach((k) => {
+        if (f(k)) patch[k] = f(k).value.trim() || null;
+      });
+      patch.address = P().cleanAddress(f("address").value) || null;
+      if (!patch.county && patch.address) patch.county = P().countyFor(patch.address) || null;
+      patch.price = Number(String(f("price").value).replace(/[^0-9.]/g, "")) || 0;
+      patch.attempt_count = parseInt(f("attempt_count").value, 10) || 0;
+      if (patch.address !== j.address) { patch.lat = null; patch.lng = null; }
+      if ((patch.status === "Served" || patch.status === "Non-Serve Complete") && !j.done_at) { patch.done_at = new Date().toISOString(); patch.on_today = false; }
+      if (patch.status === "Active" || patch.status === "On Hold") patch.done_at = null;
+      if (patch.status === "On Hold") patch.on_today = false;
+      if (await updateJob(j.id, patch)) {
+        // remember name -> address for future pastes
+        if (patch.person && patch.address && P().hasZip(patch.address)) {
+          const { data } = await J().db.from("jes_settings").select("value").eq("key", "known_addresses").maybeSingle();
+          const known = (data && data.value) || {};
+          known[P().nameKey(patch.person)] = { address: patch.address, county: patch.county };
+          await J().db.from("jes_settings").upsert({ key: "known_addresses", value: known });
+        }
+        close(); J().toast("Saved"); after && after();
+      }
+    };
+  }
+
+  // =====================================================================
+  // ROUTE TAB
+  // =====================================================================
+  const RS = { county: localStorage.getItem("jes_route_county") || "Osceola", start: "home", map: null, stops: [], all: [] };
+
+  const HOME_FALLBACK = { lat: 28.2489, lng: -81.2812 }; // St. Cloud, FL
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function geocode(address) {
+    const q = address.replace(/,?\s*(apt|unit|ste|suite|lot|bldg|#)\s*[\w-]+/ig, "");
+    try {
+      const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } });
+      const d = await r.json();
+      if (d && d[0]) return { lat: Number(d[0].lat), lng: Number(d[0].lon) };
+    } catch (e) {}
+    return null;
+  }
+  async function homePoint() {
+    if (RS.start === "here") {
+      const here = await new Promise((res) => {
+        if (!navigator.geolocation) return res(null);
+        navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res(null), { timeout: 8000 });
+      });
+      if (here) return here;
+      J().toast("Couldn't get your location — starting from home");
+    }
+    try { const c = JSON.parse(localStorage.getItem("jes_home_ll") || "null"); if (c) return c; } catch (e) {}
+    const { data } = await J().db.from("jes_settings").select("value").eq("key", "home_address").maybeSingle();
+    const pt = (data && data.value && await geocode(String(data.value))) || HOME_FALLBACK;
+    try { localStorage.setItem("jes_home_ll", JSON.stringify(pt)); } catch (e) {}
+    return pt;
+  }
+  function miles(a, b) {
+    const R = 3958.8, rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  // nearest-next from the start, then a quick clean-up pass to remove zig-zags
+  function bestOrder(start, pts) {
+    const left = pts.slice(), out = [];
+    let cur = start;
+    while (left.length) {
+      let bi = 0, bd = Infinity;
+      left.forEach((p, i) => { const d = miles(cur, p); if (d < bd) { bd = d; bi = i; } });
+      cur = left.splice(bi, 1)[0]; out.push(cur);
+    }
+    const len = (arr) => arr.reduce((s, p, i) => s + miles(i ? arr[i - 1] : start, p), 0);
+    let improved = true, route = out;
+    while (improved) {
+      improved = false;
+      for (let i = 0; i < route.length - 1; i++) {
+        for (let k = i + 1; k < route.length; k++) {
+          const cand = route.slice(0, i).concat(route.slice(i, k + 1).reverse(), route.slice(k + 1));
+          if (len(cand) + 0.01 < len(route)) { route = cand; improved = true; }
+        }
+      }
+    }
+    return route;
+  }
+
+  async function drawRoute() {
+    const { esc } = J();
+    if (RS.map) { RS.map.remove(); RS.map = null; }
+    byId("screen").innerHTML = `
+      <section class="route">
+        <div class="route-head">
+          <h1>Today's Route</h1>
+          <div class="seg" id="rCounty">${["Osceola", "Orange"].map((c) => `<button class="${c === RS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
+        </div>
+        <div class="route-grid">
+          <div class="route-mapcol">
+            <div id="rMap" class="map" role="img" aria-label="Map of today's stops"></div>
+            <div class="route-tools">
+              <button class="btn" id="rBest">Best order (save gas)</button>
+              <label class="check-line small-line"><input type="checkbox" id="rHere" ${RS.start === "here" ? "checked" : ""}> Start from where I am</label>
+              <button class="btn ghost" id="rPrint">Print route</button>
+            </div>
+            <div id="rMsg"></div>
+          </div>
+          <div class="route-listcol">
+            <div id="rStops" class="stops"><p class="muted">Loading…</p></div>
+            <details class="add-more" id="rAdd"><summary>Add more stops in ${esc(RS.county)}</summary><div id="rAddList"></div></details>
+          </div>
+        </div>
+        <div id="printSheet" class="print-only"></div>
+      </section>
+      <div class="sheet-back" id="sheetBack" hidden></div>`;
+    byId("rCounty").onclick = (e) => {
+      const b = e.target.closest("[data-c]"); if (!b) return;
+      RS.county = b.dataset.c; localStorage.setItem("jes_route_county", RS.county); drawRoute();
+    };
+    byId("rHere").onchange = (e) => { RS.start = e.target.checked ? "here" : "home"; };
+    byId("rBest").onclick = optimize;
+    byId("rPrint").onclick = printRoute;
+    await loadStops();
+  }
+
+  async function loadStops() {
+    RS.all = await fetchJobs();
+    const today = RS.all.filter((j) => j.on_today && j.status === "Active");
+    const inCounty = today.filter((j) => j.county === RS.county);
+    const noAddr = inCounty.filter(needsAddress);
+    RS.stops = inCounty.filter((j) => !needsAddress(j))
+      .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999) || (b.service === "Rush") - (a.service === "Rush"));
+    const otherCounty = today.filter((j) => j.county && j.county !== RS.county).length;
+
+    const msgs = [];
+    if (noAddr.length) msgs.push(`${noAddr.length} of today's jobs in ${RS.county} ${noAddr.length > 1 ? "are" : "is"} missing an address — fix in Jobs → Needs address.`);
+    if (otherCounty) msgs.push(`${otherCounty} of today's jobs ${otherCounty > 1 ? "are" : "is"} in the other county and not shown here.`);
+    byId("rMsg").innerHTML = msgs.map((m) => `<div class="alert soft">${J().esc(m)}</div>`).join("");
+
+    // look up map points once (saved so it never has to look again)
+    const missing = RS.stops.filter((j) => j.lat == null);
+    for (let i = 0; i < missing.length; i++) {
+      byId("rMsg").insertAdjacentHTML("afterbegin", `<div class="alert soft" id="geoMsg">Finding ${missing.length - i} address${missing.length - i > 1 ? "es" : ""} on the map…</div>`);
+      const pt = await geocode(missing[i].address);
+      const gm = byId("geoMsg"); if (gm) gm.remove();
+      if (pt) { missing[i].lat = pt.lat; missing[i].lng = pt.lng; await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng }); }
+      else missing[i].geoFail = true;
+      if (i < missing.length - 1) await sleep(1100);
+    }
+    drawStops();
+    drawMap();
+    drawAddMore();
+  }
+
+  function drawMap() {
+    if (!window.L) { byId("rMap").innerHTML = `<p class="muted center">Map couldn't load. The list still works.</p>`; return; }
+    if (RS.map) { RS.map.remove(); RS.map = null; }
+    const map = L.map("rMap", { zoomControl: true, attributionControl: true });
+    RS.map = map;
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19, subdomains: "abcd",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    }).addTo(map);
+    const pts = [];
+    RS.stops.forEach((j, i) => {
+      if (j.lat == null) return;
+      const icon = L.divIcon({ className: "pin", html: `<span>${i + 1}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] });
+      L.marker([j.lat, j.lng], { icon }).addTo(map).bindPopup(`<b>${i + 1}. ${J().esc(j.person || "")}</b><br>${J().esc(j.address)}`);
+      pts.push([j.lat, j.lng]);
+    });
+    if (pts.length > 1) L.polyline(pts, { color: "#1F2A44", weight: 3, dashArray: "6 6" }).addTo(map);
+    if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 14 });
+    else map.setView([HOME_FALLBACK.lat, HOME_FALLBACK.lng], 11);
+    setTimeout(() => map.invalidateSize(), 200);
+  }
+
+  function drawStops() {
+    const { esc } = J();
+    const box = byId("rStops");
+    if (!RS.stops.length) {
+      box.innerHTML = `<div class="card center"><b>No stops for ${esc(RS.county)} today.</b><p class="muted">Tap "+ Today" on jobs in the Jobs tab, or use "Add more stops" below.</p></div>`;
+      return;
+    }
+    box.innerHTML = RS.stops.map((j, i) => {
+      const first = i === 0;
+      return `
+      <div class="stop ${first ? "current" : ""}">
+        <div class="stop-top">
+          <span class="stop-num">${i + 1}</span>
+          <div class="draft-text">
+            <div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} ${j.service === "Rush" ? `<span class="rush">Rush</span>` : ""}</div>
+            <div class="draft-addr">${esc(j.address)}</div>
+            <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.geoFail ? ` · <b class="bad">Couldn't find on map — check address</b>` : ""}</div>
+          </div>
+          <div class="move">
+            <button class="icon-btn" data-up="${i}" aria-label="Move stop ${i + 1} up" ${i === 0 ? "disabled" : ""}>▲</button>
+            <button class="icon-btn" data-down="${i}" aria-label="Move stop ${i + 1} down" ${i === RS.stops.length - 1 ? "disabled" : ""}>▼</button>
+          </div>
+        </div>
+        ${first ? `
+        <div class="stop-actions">
+          <div class="row-gap">
+            <a class="btn ghost grow" href="https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}&dirflg=d" target="_blank" rel="noopener">Open in Apple Maps</a>
+            <button class="btn ghost" data-edit="${j.id}">Edit</button>
+          </div>
+          <label class="sr" for="rNote">Note for this stop</label>
+          <input id="rNote" class="note-in" placeholder="Quick note (optional): no answer, car in driveway…">
+          <button class="btn go big" data-act="Served" data-id="${j.id}">Served</button>
+          <div class="row-gap">
+            <button class="btn ghost gold grow" data-act="Attempt" data-id="${j.id}">Attempted</button>
+            <button class="btn grow" data-act="Non-Serve" data-id="${j.id}">Non-Served</button>
+          </div>
+        </div>` : `
+        <div class="row-gap small-actions">
+          <a class="btn ghost thin grow" href="https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a>
+          <button class="btn ghost thin" data-edit="${j.id}">Edit</button>
+        </div>`}
+      </div>`;
+    }).join("");
+    box.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => move(Number(b.dataset.up), -1));
+    box.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => move(Number(b.dataset.down), 1));
+    box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openJob(RS.stops.find((j) => j.id === b.dataset.edit), drawRoute));
+    box.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => act(b.dataset.act, RS.stops.find((j) => j.id === b.dataset.id)));
+  }
+
+  async function saveOrder() {
+    await Promise.all(RS.stops.map((j, i) => (j.route_order = i, updateJob(j.id, { route_order: i }))));
+  }
+  async function move(i, dir) {
+    const k = i + dir;
+    [RS.stops[i], RS.stops[k]] = [RS.stops[k], RS.stops[i]];
+    drawStops(); drawMap(); await saveOrder();
+  }
+  async function optimize() {
+    const withPts = RS.stops.filter((j) => j.lat != null);
+    if (withPts.length < 2) { J().toast("Need at least 2 stops on the map"); return; }
+    const start = await homePoint();
+    const ordered = bestOrder(start, withPts);
+    const rush = ordered.filter((j) => j.service === "Rush");
+    const rest = ordered.filter((j) => j.service !== "Rush");
+    RS.stops = rush.concat(rest, RS.stops.filter((j) => j.lat == null));
+    drawStops(); drawMap(); await saveOrder();
+    const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + miles(i ? arr[i - 1] : start, p), 0);
+    J().toast(`Best order set · about ${total.toFixed(1)} miles (straight-line)`);
+  }
+
+  async function act(kind, j) {
+    const note = (byId("rNote") && byId("rNote").value.trim()) || "";
+    const patch = {};
+    if (kind === "Attempt") {
+      patch.attempt_count = (j.attempt_count || 0) + 1;
+      patch.on_today = false; patch.route_order = null;
+      if (patch.attempt_count >= 5 && confirm("That's attempt 5. Mark this job Non-Serve Complete (done and billable)?")) {
+        patch.status = "Non-Serve Complete"; patch.done_at = new Date().toISOString();
+      }
+    } else if (kind === "Served") {
+      patch.status = "Served"; patch.done_at = new Date().toISOString(); patch.on_today = false; patch.route_order = null;
+    } else {
+      if ((j.attempt_count || 0) < 4 && !confirm(`Only ${j.attempt_count || 0} attempt(s) logged. Mark Non-Served anyway?`)) return;
+      patch.status = "Non-Serve Complete"; patch.done_at = new Date().toISOString(); patch.on_today = false; patch.route_order = null;
+      if (kind === "Non-Serve") patch.attempt_count = Math.max(5, (j.attempt_count || 0) + 1);
+    }
+    if (!(await updateJob(j.id, patch))) return;
+    await logAttempt(j, kind === "Attempt" ? "Attempt" : kind === "Served" ? "Served" : "Non-Serve", note);
+    RS.stops = RS.stops.filter((x) => x.id !== j.id);
+    await saveOrder();
+    drawStops(); drawMap(); drawAddMore();
+    J().toast(kind === "Served" ? "Served ✓ — next stop" : kind === "Attempt" ? "Attempt logged — next stop" : "Non-served — next stop");
+  }
+
+  function drawAddMore() {
+    const { esc } = J();
+    const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && j.county === RS.county && !needsAddress(j));
+    byId("rAddList").innerHTML = pool.length ? pool.map((j) => `
+      <div class="add-line">
+        <div class="draft-text"><div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div><div class="draft-addr">${esc(j.address)}</div></div>
+        <button class="today-btn" data-add="${j.id}">+ Add</button>
+      </div>`).join("") : `<p class="muted small">No other active ${esc(RS.county)} jobs.</p>`;
+    byId("rAddList").querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
+      if (await updateJob(b.dataset.add, { on_today: true, route_order: null })) { J().toast("Added — tap Best order to re-sort"); loadStops(); }
+    });
+  }
+
+  // ---------- one-page printed route (black ink) ----------
+  function printRoute() {
+    const { esc } = J();
+    const d = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    byId("printSheet").innerHTML = `
+      <div class="print-head"><b>Route · ${esc(RS.county)} County</b><span>${esc(d)} · ${RS.stops.length} stops</span></div>
+      <div class="print-grid">${RS.stops.map((j, i) => `
+        <div class="print-box">
+          <div class="pb-top"><span class="pb-num">${i + 1}</span>${j.service === "Rush" ? `<span class="pb-rush">RUSH</span>` : ""}</div>
+          <div class="pb-name">${esc(j.person || "(no name)")}</div>
+          <div>${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</div>
+          <div>${esc(j.address)}</div>
+          <div>Attempt ${(j.attempt_count || 0) + 1} of 5${j.due_date ? " · Due " + esc(fmtDate(j.due_date)) : ""}</div>
+          <div class="pb-lines">☐ Served ☐ Attempt ☐ Non-serve<br>Time: ______ Notes: ______________</div>
+        </div>`).join("")}</div>`;
+    window.print();
+  }
+
+  window.JES_JOBS = { drawJobs, drawRoute, openJob };
+})();
