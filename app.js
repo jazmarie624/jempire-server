@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 6: tap-able Home boxes)
+// J EMPIRE SERVER — app.js (version 7: Office hookup)
 (function () {
   "use strict";
 
@@ -88,7 +88,8 @@
       add: () => (window.JES_INTAKE ? window.JES_INTAKE.draw() : comingSoon("add")),
       jobs: () => (window.JES_JOBS ? window.JES_JOBS.drawJobs(filter ? { filter } : null) : comingSoon("jobs")),
       route: () => (window.JES_JOBS ? window.JES_JOBS.drawRoute() : comingSoon("route")),
-      done: comingSoon, money: comingSoon
+      done: () => (window.JES_OFFICE ? window.JES_OFFICE.drawDone() : comingSoon("done")),
+      money: () => (window.JES_OFFICE ? window.JES_OFFICE.drawMoney() : comingSoon("money"))
     };
     (screens[id] || drawHome)(id);
   }
@@ -137,7 +138,7 @@
           <button class="tile" data-go="jobs" data-filter="Active"><div class="tile-label">Active jobs ›</div><div class="tile-value">…</div><div class="tile-sub">Ready to route</div></button>
           <button class="tile" data-go="jobs" data-filter="On Hold"><div class="tile-label">On hold ›</div><div class="tile-value">…</div><div class="tile-sub">Kept, not routed</div></button>
           <button class="tile red" data-go="jobs" data-filter="Needs address"><div class="tile-label">Need fixing ›</div><div class="tile-value">…</div><div class="tile-sub">Red jobs</div></button>
-          <button class="tile green" data-go="jobs" data-filter="Done"><div class="tile-label">This week ›</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></button>
+          <button class="tile green" data-go="money"><div class="tile-label">This week ›</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></button>
           <button class="tile red" data-go="money"><div class="tile-label">Pending payment ›</div><div class="tile-value">…</div><div class="tile-sub">Unpaid invoices</div></button>
         </div>
       </section>`;

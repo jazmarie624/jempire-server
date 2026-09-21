@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 7: tap-able Home boxes) */
+/* J EMPIRE SERVER — style.css (version 8: Office) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -298,7 +298,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 @media print {
   @page { margin: 0.4in; }
   body { background: #fff; padding: 0; }
-  .topbar, .tabs-bottom, .tabs-top, #toast, .route > :not(#printSheet) { display: none !important; }
+  .topbar, .tabs-bottom, .tabs-top, #toast, .sheet-back, #screen > section > :not(#printSheet) { display: none !important; }
   #screen { padding: 0; max-width: none; }
   .print-only { display: block !important; color: #000; font-family: var(--sans); }
   .print-head { display: flex; justify-content: space-between; font-size: 13pt; border-bottom: 2px solid #000; padding-bottom: 4pt; margin-bottom: 6pt; }
@@ -309,6 +309,66 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   .pb-rush { font-weight: 700; border: 1.2pt solid #000; padding: 0 3pt; }
   .pb-name { font-weight: 700; font-size: 10pt; }
   .pb-lines { margin-top: 3pt; border-top: 0.6pt solid #000; padding-top: 3pt; }
+}
+
+
+/* ================= Office (Piece 4) ================= */
+.office { display: flex; flex-direction: column; gap: 0.8rem; }
+.row-gap.wrap { flex-wrap: wrap; }
+.day-head { font-size: 1.3rem; margin-top: 0.6rem; }
+.check-card { background: var(--paper); border: 2px solid var(--red); border-radius: 14px; padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.4rem; }
+.check-card.all-ok { border-color: var(--green); background: var(--green-bg); }
+.checks { display: flex; flex-direction: column; gap: 0.2rem; }
+.checks label { display: flex; align-items: center; gap: 0.55rem; min-height: 44px; font-weight: 600; }
+.checks input { width: 24px; height: 24px; flex-shrink: 0; }
+.price-in { display: flex; align-items: center; gap: 0.3rem; font-weight: 700; }
+.price-in input { width: 6.5rem; min-height: 44px; font-size: 1rem; border: 1px solid var(--line); border-radius: 10px; padding: 0 0.5rem; font-family: var(--sans); }
+.money-grid { grid-template-columns: 1fr 1fr; }
+.bar { height: 8px; background: #E4DFD3; border-radius: 4px; margin-top: 0.4rem; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--green); }
+.inv-list, .exp-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.inv-card { border-radius: 14px; padding: 0.7rem 0.8rem; background: var(--paper); display: flex; flex-direction: column; gap: 0.5rem; }
+.inv-card.pending { border: 2px solid var(--red); }
+.inv-card.paid { border: 2px solid var(--green); }
+.inv-top { display: flex; justify-content: space-between; gap: 0.6rem; align-items: flex-start; }
+.status-pill { flex-shrink: 0; font-size: 0.75rem; font-weight: 700; padding: 0.3rem 0.6rem; border-radius: 8px; color: #fff; }
+.pending .status-pill { background: var(--red); }
+.paid .status-pill { background: var(--green); }
+.paid-on { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; font-size: 0.9rem; }
+.paid-on input { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 0 0.4rem; font-size: 0.95rem; font-family: var(--sans); }
+.exp-line { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 0.3rem 0.4rem 0.3rem 0.7rem; }
+.small-x { width: 36px; height: 36px; font-size: 0.8rem; display: inline-flex; margin-left: 0.3rem; }
+.settings { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0 0.8rem 0.8rem; }
+.settings summary { cursor: pointer; font-weight: 700; padding: 0.8rem 0; }
+.settings label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; font-weight: 700; color: var(--gold-text); margin-bottom: 0.5rem; }
+.settings input { min-height: 46px; font-size: 1rem; border: 1px solid var(--line); border-radius: 10px; padding: 0 0.6rem; font-family: var(--sans); color: var(--navy); }
+.tag.navy { background: var(--navy); border-color: var(--navy); color: #F2E6C9; }
+.sheet.wide { max-width: 52rem; }
+.pick-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.pick-row { display: flex; align-items: center; gap: 0.6rem; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.5rem 0.6rem; }
+.pick-row.on { border: 2px solid var(--navy); }
+.pick-row.locked { opacity: 0.55; }
+.pick-row input { width: 24px; height: 24px; flex-shrink: 0; }
+.pick-row .draft-text span { display: block; }
+.pick-right { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; flex-shrink: 0; }
+.draft-later.ok { color: var(--green); } .draft-later.bad { color: var(--red); }
+.inv-sum { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.6rem 0.8rem; }
+.inv-sum div { display: flex; justify-content: space-between; font-weight: 600; padding: 0.15rem 0; }
+.inv-sum .due { font-family: var(--serif); font-size: 1.5rem; font-weight: 700; border-top: 2px solid var(--navy); margin-top: 0.3rem; padding-top: 0.3rem; }
+@media (min-width: 900px) {
+  .money-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media print {
+  .inv-print { color: #000; font-size: 11pt; }
+  .ip-head { display: flex; justify-content: space-between; border-bottom: 1.5pt solid #000; padding-bottom: 8pt; margin-bottom: 10pt; }
+  .ip-me { font-size: 16pt; font-weight: 700; }
+  .ip-week { text-align: right; }
+  .ip-sec { font-weight: 700; letter-spacing: 2pt; margin-top: 10pt; }
+  .ip-table { width: 100%; border-collapse: collapse; }
+  .ip-table td { padding: 3pt 0; border-bottom: 0.5pt solid #999; }
+  .ip-n { width: 26pt; } .ip-no { width: 110pt; } .ip-amt { text-align: right; width: 70pt; }
+  .ip-sub { text-align: right; font-weight: 700; padding: 4pt 0; }
+  .ip-due { display: flex; justify-content: space-between; font-size: 15pt; font-weight: 700; border-top: 2pt solid #000; margin-top: 12pt; padding-top: 6pt; }
 }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
