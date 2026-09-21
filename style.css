@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 8: Office) */
+/* J EMPIRE SERVER — style.css (version 9: soft map) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -261,6 +261,7 @@ button.tile:active { transform: scale(0.98); background: #F1ECDF; }
 .route-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
 .small-line { font-size: 0.9rem; }
 .alert.soft { border-width: 1px; font-size: 0.9rem; margin-top: 0.4rem; }
+.soft-tiles { filter: saturate(0.35) sepia(0.12) brightness(1.04); }
 .pin { background: none; border: none; }
 .pin span {
   display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%;

@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 1: Jobs list + Route + real map)
+// J EMPIRE SERVER — jobs.js (version 2: free map tiles + smarter address finder)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -198,13 +198,32 @@
   const HOME_FALLBACK = { lat: 28.2489, lng: -81.2812 }; // St. Cloud, FL
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  async function geocode(address) {
-    const q = address.replace(/,?\s*(apt|unit|ste|suite|lot|bldg|#)\s*[\w-]+/ig, "");
+  // Tries the full address, then short forms (S, Pkwy…), then the street, then the ZIP.
+  const ABBR = [[/\bSouth\b/gi, "S"], [/\bNorth\b/gi, "N"], [/\bEast\b/gi, "E"], [/\bWest\b/gi, "W"],
+    [/\bParkway\b/gi, "Pkwy"], [/\bBoulevard\b/gi, "Blvd"], [/\bHighway\b/gi, "Hwy"], [/\bAvenue\b/gi, "Ave"],
+    [/\bStreet\b/gi, "St"], [/\bDrive\b/gi, "Dr"], [/\bRoad\b/gi, "Rd"], [/\bLane\b/gi, "Ln"], [/\bCourt\b/gi, "Ct"],
+    [/\bCircle\b/gi, "Cir"], [/\bTrail\b/gi, "Trl"], [/\bPlace\b/gi, "Pl"]];
+  async function lookup(q) {
     try {
       const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } });
       const d = await r.json();
       if (d && d[0]) return { lat: Number(d[0].lat), lng: Number(d[0].lon) };
     } catch (e) {}
+    return null;
+  }
+  async function geocode(address) {
+    const base = address.replace(/,?\s*(apt|unit|ste|suite|lot|bldg|#)\s*[\w-]+/ig, "").replace(/-\d{4}\b/, "");
+    let abbr = base; ABBR.forEach(([re, to]) => { abbr = abbr.replace(re, to); });
+    const noNum = base.replace(/^\d+[A-Za-z]?\s+/, "");
+    const zip = (base.match(/\bFL\s*(\d{5})/i) || [])[1];
+    const tries = [base, abbr, noNum];
+    for (let i = 0; i < tries.length; i++) {
+      if (i && tries[i] === tries[i - 1]) continue;
+      const pt = await lookup(tries[i]);
+      if (pt) { pt.approx = i === 2; return pt; }
+      await sleep(1100);
+    }
+    if (zip) { const pt = await lookup(zip + ", FL"); if (pt) { pt.approx = true; return pt; } }
     return null;
   }
   async function homePoint() {
@@ -308,7 +327,7 @@
       byId("rMsg").insertAdjacentHTML("afterbegin", `<div class="alert soft" id="geoMsg">Finding ${missing.length - i} address${missing.length - i > 1 ? "es" : ""} on the map…</div>`);
       const pt = await geocode(missing[i].address);
       const gm = byId("geoMsg"); if (gm) gm.remove();
-      if (pt) { missing[i].lat = pt.lat; missing[i].lng = pt.lng; await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng }); }
+      if (pt) { missing[i].lat = pt.lat; missing[i].lng = pt.lng; missing[i].geoApprox = pt.approx; await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng }); }
       else missing[i].geoFail = true;
       if (i < missing.length - 1) await sleep(1100);
     }
@@ -322,9 +341,9 @@
     if (RS.map) { RS.map.remove(); RS.map = null; }
     const map = L.map("rMap", { zoomControl: true, attributionControl: true });
     RS.map = map;
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19, subdomains: "abcd",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, className: "soft-tiles",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
     const pts = [];
     RS.stops.forEach((j, i) => {
@@ -355,7 +374,7 @@
           <div class="draft-text">
             <div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} ${j.service === "Rush" ? `<span class="rush">Rush</span>` : ""}</div>
             <div class="draft-addr">${esc(j.address)}</div>
-            <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.geoFail ? ` · <b class="bad">Couldn't find on map — check address</b>` : ""}</div>
+            <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.geoFail ? ` · <b class="bad">Couldn't find on map — check address</b>` : j.geoApprox ? ` · <b class="bad">Pin is approximate</b>` : ""}</div>
           </div>
           <div class="move">
             <button class="icon-btn" data-up="${i}" aria-label="Move stop ${i + 1} up" ${i === 0 ? "disabled" : ""}>▲</button>
