@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 5: Jobs + Route hookup)
+// J EMPIRE SERVER — app.js (version 6: tap-able Home boxes)
 (function () {
   "use strict";
 
@@ -75,10 +75,10 @@
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-go]");
     if (!b) return;
-    go(b.getAttribute("data-go"));
+    go(b.getAttribute("data-go"), b.getAttribute("data-filter"));
   });
 
-  function go(id) {
+  function go(id, filter) {
     if (id === "office") id = "money";
     current = id;
     drawTabs();
@@ -86,7 +86,7 @@
     const screens = {
       home: drawHome,
       add: () => (window.JES_INTAKE ? window.JES_INTAKE.draw() : comingSoon("add")),
-      jobs: () => (window.JES_JOBS ? window.JES_JOBS.drawJobs() : comingSoon("jobs")),
+      jobs: () => (window.JES_JOBS ? window.JES_JOBS.drawJobs(filter ? { filter } : null) : comingSoon("jobs")),
       route: () => (window.JES_JOBS ? window.JES_JOBS.drawRoute() : comingSoon("route")),
       done: comingSoon, money: comingSoon
     };
@@ -134,11 +134,11 @@
         </div>
         <div id="alerts"></div>
         <div class="glance" id="glance">
-          <div class="tile"><div class="tile-label">Active jobs</div><div class="tile-value">…</div><div class="tile-sub">Ready to route</div></div>
-          <div class="tile"><div class="tile-label">On hold</div><div class="tile-value">…</div><div class="tile-sub">Kept, not routed</div></div>
-          <div class="tile red"><div class="tile-label">Need fixing</div><div class="tile-value">…</div><div class="tile-sub">Red jobs</div></div>
-          <div class="tile green"><div class="tile-label">This week</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></div>
-          <div class="tile red"><div class="tile-label">Pending payment</div><div class="tile-value">…</div><div class="tile-sub">Unpaid invoices</div></div>
+          <button class="tile" data-go="jobs" data-filter="Active"><div class="tile-label">Active jobs ›</div><div class="tile-value">…</div><div class="tile-sub">Ready to route</div></button>
+          <button class="tile" data-go="jobs" data-filter="On Hold"><div class="tile-label">On hold ›</div><div class="tile-value">…</div><div class="tile-sub">Kept, not routed</div></button>
+          <button class="tile red" data-go="jobs" data-filter="Needs address"><div class="tile-label">Need fixing ›</div><div class="tile-value">…</div><div class="tile-sub">Red jobs</div></button>
+          <button class="tile green" data-go="jobs" data-filter="Done"><div class="tile-label">This week ›</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></button>
+          <button class="tile red" data-go="money"><div class="tile-label">Pending payment ›</div><div class="tile-value">…</div><div class="tile-sub">Unpaid invoices</div></button>
         </div>
       </section>`;
     document.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
@@ -194,7 +194,7 @@
     if (forgot.length) alerts.push(`${forgot.length} finished job${forgot.length > 1 ? "s are" : " is"} over a week old and not on an invoice yet.`);
 
     $("#alerts").innerHTML = alerts.length
-      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" data-go="${i === alerts.length - 1 && forgot.length ? "money" : "jobs"}">${esc(a)}</button>`).join("")}</div>`
+      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" ${/invoice/.test(a) ? 'data-go="money"' : /address/.test(a) ? 'data-go="jobs" data-filter="Needs address"' : 'data-go="jobs" data-filter="Active"'}>${esc(a)}</button>`).join("")}</div>`
       : "";
   }
 

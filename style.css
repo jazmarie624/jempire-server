@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 6: Jobs + Route + map + print) */
+/* J EMPIRE SERVER — style.css (version 7: tap-able Home boxes) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -94,6 +94,8 @@ h2 { font-size: 1.5rem; }
 .choice.field .choice-sub { color: var(--gold-soft); }
 .glance { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 .tile { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.7rem 0.9rem; }
+button.tile { text-align: left; font: inherit; color: inherit; cursor: pointer; min-height: 44px; }
+button.tile:active { transform: scale(0.98); background: #F1ECDF; }
 .tile-label { font-size: 0.8rem; font-weight: 700; color: var(--gold-text); }
 .tile-value { font-family: var(--serif); font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
 .tile-sub { font-size: 0.85rem; color: var(--navy-2); }
