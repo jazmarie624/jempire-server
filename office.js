@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 1: Done checklist, Invoices, Money, Mileage, Settings)
+// J EMPIRE SERVER — office.js (version 2: invoice defaults to this Thu–Thu week)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -205,8 +205,10 @@
   function newInvoice(D) {
     const { esc, money } = J();
     const back = byId("sheetBack");
-    const st = { grp: "Jean", start: weekStart(addDays(new Date(), -7)), billTo: GROUPS.Jean.billTo, picked: new Set(), showAll: false };
-    st.end = addDays(st.start, 7);
+    // The week you'd hand in next: ends this Thursday (today, if today is Thursday)
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const endThu = today.getDay() === 4 ? today : addDays(weekStart(), 7);
+    const st = { grp: "Jean", start: addDays(endThu, -7), end: endThu, billTo: GROUPS.Jean.billTo, picked: new Set(), showAll: false };
     const draw = () => {
       const g = GROUPS[st.grp];
       const inPeriod = (j) => j.done_at && new Date(j.done_at) >= st.start && new Date(j.done_at) < addDays(st.end, 1);
