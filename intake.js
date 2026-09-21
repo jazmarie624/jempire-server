@@ -1,0 +1,482 @@
+// J EMPIRE SERVER — intake.js (version 1: Smart Intake)
+// Reads pasted jobs for each client, drops the junk words, and builds
+// uniform job drafts. Every draft can be edited before saving.
+(function () {
+  "use strict";
+
+  // =====================================================================
+  // 1. PARSERS (pure functions — no screen code here)
+  // =====================================================================
+  const CLIENTS = ["ABC Legal", "Ody's", "ProVest", "Userve", "Private"];
+
+  const RULES = {
+    "ABC Legal": "Keeps: order #, name, price, address, serve-by date, attempt instructions, vehicles. Ignores: Details, Photos, History, Deliver To, and the other menu words.",
+    "Ody's": "Keeps: Standard or Rush, name, ODY job #. Ody's never sends an address, so each job stays red until you add one. Paste several at once.",
+    "ProVest": "Keeps: each address as its own job. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
+    "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map.",
+    "Private": "Makes a blank job for you to fill in. If you paste an address, it's filled in for you."
+  };
+
+  // --- county lookup by ZIP, then by city ---
+  const OSCEOLA_ZIPS = ["34739", "34741", "34742", "34743", "34744", "34745", "34746", "34747", "34758", "34769", "34771", "34772", "34773"];
+  const ORANGE_ZIPS = ["32703", "32704", "32709", "32712", "32751", "32789", "32790", "32792", "32793", "34734", "34740", "34760", "34761", "34777", "34778", "34786", "34787"];
+  const OSCEOLA_CITIES = ["kissimmee", "st cloud", "st. cloud", "saint cloud", "celebration", "poinciana", "kenansville", "harmony", "narcoossee", "kindred", "intercession city", "campbell"];
+  const ORANGE_CITIES = ["orlando", "winter park", "apopka", "ocoee", "winter garden", "windermere", "maitland", "oakland", "belle isle", "edgewood", "eatonville", "gotha", "pine hills", "lake buena vista", "zellwood", "christmas", "bithlo"];
+
+  function countyFor(address) {
+    const a = (address || "").toLowerCase();
+    const zip = (a.match(/\b(\d{5})(?:-\d{4})?\b(?!.*\b\d{5}\b)/) || [])[1];
+    if (zip) {
+      if (OSCEOLA_ZIPS.includes(zip)) return "Osceola";
+      if (ORANGE_ZIPS.includes(zip) || /^32[78]\d\d$/.test(zip)) return "Orange";
+    }
+    if (OSCEOLA_CITIES.some((c) => a.includes(c))) return "Osceola";
+    if (ORANGE_CITIES.some((c) => a.includes(c))) return "Orange";
+    return "";
+  }
+
+  // --- tidy text ---
+  const KEEP_UPPER = new Set(["FL", "LLC", "INC", "PA", "LLP", "NE", "NW", "SE", "SW", "N", "S", "E", "W", "II", "III", "IV", "PO"]);
+  function titleCase(s) {
+    // Fixes ALL-CAPS words one at a time; leaves normal words alone.
+    return (s || "").trim().split(/(\s+)/).map((w) => {
+      const bare = w.replace(/[^A-Za-z]/g, "");
+      if (bare.length < 2 || bare !== bare.toUpperCase()) return w;
+      const up = bare.toUpperCase();
+      if (up === "INC") return w.replace(bare, "Inc");
+      if (KEEP_UPPER.has(up)) return w;
+      return w.toLowerCase().replace(/(^|[^A-Za-z0-9])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+    }).join("");
+  }
+
+  function cleanAddress(s) {
+    let a = (s || "").replace(/\s+/g, " ").trim();
+    a = a.replace(/,\s*,+/g, ",");                                 // ",,"  -> ","
+    a = a.replace(/,?\s*\b(OSCEOLA|ORANGE)\b\s*(COUNTY)?\s*,?\s*$/i, ""); // trailing county word
+    a = a.replace(/,\s*FL\s*,?\s*(\d{5})(?:[\s-]+(\d{4}))?/i, (m, z, p4) => ", FL " + z + (p4 ? "-" + p4 : ""));
+    a = a.replace(/\s+FL\s*,?\s*(\d{5})(?:[\s-]+(\d{4}))?/i, (m, z, p4) => ", FL " + z + (p4 ? "-" + p4 : ""));
+    a = a.replace(/,\s*,/g, ",").replace(/[,\s]+$/, "");
+    return titleCase(a);
+  }
+
+  const STRAY = /^[\s•·=#*\-–—|>曲\u2022\u25CF\u25AA\u2023]+|[\s•·=|]+$/g;
+  function lines(text) {
+    return (text || "").replace(/\r/g, "").split("\n")
+      .map((l) => l.replace(STRAY, "").trim())
+      .filter((l) => l.length);
+  }
+  const DATE = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/;
+  const toIsoDate = (m) => `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  const STREET_START = /^\d{1,6}[A-Za-z]?\s+[A-Za-z0-9]/;
+
+  function blankDraft(client) {
+    return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
+      due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false };
+  }
+  function removeIgnored(ls, extra) {
+    if (!extra || !extra.length) return ls;
+    const lower = extra.map((w) => w.toLowerCase().trim()).filter(Boolean);
+    return ls.filter((l) => !lower.includes(l.toLowerCase()));
+  }
+
+  // ---------- ABC Legal ----------
+  function parseABC(text, extra) {
+    const chunks = text.split(/(?=^\s*Order\s+\d{5,})/im).filter((c) => /Order\s+\d{5,}/i.test(c));
+    const blocks = chunks.length ? chunks : [text];
+    return blocks.map((block) => {
+      const d = blankDraft("ABC Legal");
+      d.raw_text = block.trim();
+      const ls = removeIgnored(lines(block), extra);
+      const order = block.match(/Order\s+(\d{5,})/i);
+      if (order) d.job_no = order[1];
+
+      const price = block.match(/\$\s?(\d+(?:\.\d{1,2})?)/);
+      if (price) d.price = Number(price[1]);
+
+      const dt = ls.findIndex((l) => /^deliver\s*to$/i.test(l));
+      if (dt >= 0) {
+        const name = ls.slice(dt + 1).find((l) => !/\$/.test(l) && !STREET_START.test(l) && /[A-Za-z]{2}/.test(l));
+        if (name) d.person = titleCase(name);
+      }
+
+      const si = ls.findIndex((l) => STREET_START.test(l));
+      if (si >= 0) {
+        let addr = ls[si];
+        if (!/\b\d{5}\b/.test(addr) && ls[si + 1] && /\b(FL|Florida)\b/i.test(ls[si + 1])) addr += ", " + ls[si + 1];
+        d.address = cleanAddress(addr);
+      }
+
+      const due = block.match(/Serve\s+by\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+      if (due) d.due_date = toIsoDate(due[1].match(DATE));
+
+      const TIMES = ["Morning", "Afternoon", "Evening", "Weekends", "Weekdays", "New Days", "Early Morning", "Late Evening"];
+      const found = TIMES.filter((t) => ls.some((l) => l.toLowerCase() === t.toLowerCase()));
+      const notes = [];
+      if (found.length) notes.push("Vary attempts: " + found.join(", "));
+      const vi = ls.findIndex((l) => /^vehicles?$/i.test(l));
+      if (vi >= 0) {
+        const cars = [];
+        for (let i = vi + 1; i < ls.length; i++) {
+          if (/^(bo\s*)?deadline$|^serve by|^bo$/i.test(ls[i])) break;
+          if (/\d{4}/.test(ls[i]) && /[A-Za-z]/.test(ls[i])) cars.push(ls[i]);
+        }
+        if (cars.length) notes.push("Vehicles: " + cars.join("; "));
+      }
+      d.notes = notes.join("\n");
+      d.county = countyFor(d.address);
+      return d;
+    });
+  }
+
+  // ---------- Ody's ----------
+  function parseOdys(text, extra) {
+    const ls = removeIgnored(lines(text), extra);
+    const idx = [];
+    ls.forEach((l, i) => { if (/^ODY\s*[—–\-:]*\s*\d{6,}/i.test(l)) idx.push(i); });
+    if (!idx.length) {
+      const d = blankDraft("Ody's"); d.raw_text = text.trim(); return [d];
+    }
+    const isService = (l) => /^(standard|rush|rushed|stand|standa|standar|ru|rus)$/i.test(l);
+    return idx.map((at, n) => {
+      const d = blankDraft("Ody's");
+      d.job_no = ls[at].match(/(\d{6,})/)[1];
+      const start = n === 0 ? 0 : idx[n - 1] + 1;
+      const end = n + 1 < idx.length ? idx[n + 1] : ls.length;
+      const before = ls.slice(start, at);
+      const after = ls.slice(at + 1, end);
+      const nameLine = [...before].reverse().find((l) => !isService(l) && !/^ODY$/i.test(l) && !STREET_START.test(l));
+      if (nameLine) d.person = titleCase(nameLine);
+      const nameAt = nameLine ? before.lastIndexOf(nameLine) : before.length;
+      const svcLine = before.slice(0, nameAt).reverse().find(isService) || "";
+      d.service = /^ru/i.test(svcLine) ? "Rush" : "Standard";
+      const addr = before.concat(after).find((l) => STREET_START.test(l) && /[A-Za-z]{3}/.test(l));
+      if (addr) { d.address = cleanAddress(addr); d.county = countyFor(d.address); }
+      d.raw_text = before.concat([ls[at]]).join("\n");
+      return d;
+    });
+  }
+
+  // ---------- ProVest ----------
+  const PROVEST_JUNK = /^(saved|all work|corporate|q\s*search|search|include closed cases|my work|open|filters?|sort)$/i;
+  function parseProVest(text, extra) {
+    const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l));
+    const out = [];
+    let buf = "";
+    const flush = () => { if (buf.trim()) out.push(buf.trim()); buf = ""; };
+    ls.forEach((l) => {
+      if (STREET_START.test(l)) { flush(); buf = l; }
+      else if (buf) { buf += (buf.trim().endsWith(",") ? " " : ", ") + l; }
+    });
+    flush();
+    return out.map((raw) => {
+      const d = blankDraft("ProVest");
+      d.raw_text = raw;
+      d.address = cleanAddress(raw);
+      d.county = countyFor(d.address);
+      return d;
+    });
+  }
+
+  // ---------- Userve ----------
+  const USERVE_JUNK = /^(open|closed|mwa|mdewa|attempt\s*\/\s*serve|view on map|attempt|serve)$/i;
+  function parseUserve(text, extra) {
+    const ls = removeIgnored(lines(text), extra)
+      .filter((l) => !USERVE_JUNK.test(l))
+      .filter((l) => !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(l)); // assigned date
+    const jobs = [];
+    let cur = null;
+    const isName = (l) => /^[A-Z][A-Z0-9&.,'\- ]*[A-Z.]$/.test(l) && /[A-Z]{2}/.test(l) &&
+      !STREET_START.test(l) && !/^(OSCEOLA|ORANGE)( COUNTY)?$/.test(l) && !/^\d+$/.test(l);
+    ls.forEach((l) => {
+      if (isName(l) && !(cur && cur.address && !/\b\d{5}\b/.test(cur.address) && /\b(FL|KISSIMMEE|ORLANDO)\b/.test(l))) {
+        cur = { lines: [l], person: l, job_no: "", address: "", county: "" };
+        jobs.push(cur);
+        return;
+      }
+      if (!cur) return;
+      cur.lines.push(l);
+      if (/^\d{5,7}$/.test(l) && !cur.job_no) { cur.job_no = l; return; }
+      if (/^(OSCEOLA|ORANGE)( COUNTY)?$/i.test(l)) { cur.county = titleCase(l.replace(/ county/i, "")); return; }
+      if (STREET_START.test(l) && !cur.address) { cur.address = l; return; }
+      if (cur.address && !/\b\d{5}\b/.test(cur.address) && /[A-Za-z]/.test(l)) { cur.address += ", " + l; }
+    });
+    return jobs.map((j) => {
+      const d = blankDraft("Userve");
+      d.person = titleCase(j.person);
+      d.job_no = j.job_no;
+      const cm = j.address.match(/\b(OSCEOLA|ORANGE)\b/i);
+      d.address = cleanAddress(j.address);
+      d.county = j.county || (cm ? titleCase(cm[1]) : "") || countyFor(d.address);
+      d.raw_text = j.lines.join("\n");
+      return d;
+    });
+  }
+
+  // ---------- Private ----------
+  function parsePrivate(text) {
+    const d = blankDraft("Private");
+    d.raw_text = (text || "").trim();
+    const addr = lines(text).find((l) => STREET_START.test(l));
+    if (addr) { d.address = cleanAddress(addr); d.county = countyFor(d.address); }
+    return [d];
+  }
+
+  function parse(client, text, extra) {
+    if (client === "ABC Legal") return parseABC(text, extra);
+    if (client === "Ody's") return parseOdys(text, extra);
+    if (client === "ProVest") return parseProVest(text, extra);
+    if (client === "Userve") return parseUserve(text, extra);
+    return parsePrivate(text);
+  }
+
+  // What must be fixed before a job can be routed (red)
+  function problems(d, existing) {
+    const p = [];
+    if (!d.client) p.push("Client missing");
+    if (!d.address) p.push("Address missing");
+    else if (!/\b\d{5}\b/.test(d.address)) p.push("ZIP missing");
+    if (!d.county) p.push("County missing");
+    if (existing) {
+      const dupNo = d.job_no && existing.some((e) => e.job_no && e.client === d.client && e.job_no === d.job_no);
+      const dupAddr = !d.job_no && d.address && existing.some((e) => e.client === d.client && e.status !== "Served" &&
+        (e.address || "").toLowerCase() === d.address.toLowerCase());
+      if (dupNo) p.push("Already saved (same job #)");
+      else if (dupAddr) p.push("Already saved (same address)");
+    }
+    return p;
+  }
+  function laterNotes(d) {
+    const l = [];
+    if (!d.job_no) l.push("job #");
+    if (!d.person) l.push("name");
+    return l.length ? "Add " + l.join(" + ") + " later" : "";
+  }
+
+  window.JES_PARSE = { parse, problems, countyFor, cleanAddress, titleCase, CLIENTS };
+
+  // =====================================================================
+  // 2. SCREEN (Add Jobs)
+  // =====================================================================
+  const S = { client: "Userve", drafts: [], existing: null, prices: {}, ignore: {}, addToday: true };
+
+  function J() { return window.JES; }
+  function saveLocal() {
+    try { localStorage.setItem("jes_drafts", JSON.stringify({ client: S.client, drafts: S.drafts })); } catch (e) {}
+  }
+  function loadLocal() {
+    try {
+      const v = JSON.parse(localStorage.getItem("jes_drafts") || "null");
+      if (v) { S.client = v.client || S.client; S.drafts = v.drafts || []; }
+    } catch (e) {}
+  }
+
+  async function loadData() {
+    const db = J().db;
+    const [jobs, prices, ign] = await Promise.all([
+      db.from("jes_jobs").select("id,client,job_no,address,status"),
+      db.from("jes_settings").select("value").eq("key", "default_prices").maybeSingle(),
+      db.from("jes_settings").select("value").eq("key", "ignore_words").maybeSingle()
+    ]);
+    S.existing = jobs.data || [];
+    S.prices = (prices.data && prices.data.value) || {};
+    S.ignore = (ign.data && ign.data.value) || {};
+  }
+
+  async function draw() {
+    const { esc } = J();
+    loadLocal();
+    document.getElementById("screen").innerHTML = `
+      <section class="intake">
+        <div class="intake-left">
+          <h1>Add Jobs</h1>
+          <div class="row-gap">
+            <label class="sr" for="inClient">Client</label>
+            <select id="inClient" class="big-select">${CLIENTS.map((c) => `<option ${c === S.client ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
+            <button class="btn" id="inBuild">Build Jobs</button>
+          </div>
+          <label class="sr" for="inText">Paste jobs</label>
+          <textarea id="inText" class="paste" placeholder="Paste all of this client's jobs here, exactly as copied."></textarea>
+          <p class="rule" id="inRule"></p>
+          <details class="ignore">
+            <summary>Extra words to ignore for <span id="igClient"></span></summary>
+            <p class="muted small">One word or line per row. Any pasted line that matches exactly gets dropped.</p>
+            <textarea id="igText" rows="3"></textarea>
+            <button class="btn ghost" id="igSave">Save ignore words</button>
+          </details>
+        </div>
+        <div class="intake-right">
+          <div class="summary" id="inSummary"></div>
+          <div class="drafts" id="inDrafts"></div>
+          <div class="save-area" id="inSaveArea"></div>
+        </div>
+      </section>
+      <div class="sheet-back" id="sheetBack" hidden></div>`;
+
+    const sel = document.getElementById("inClient");
+    const syncClient = () => {
+      S.client = sel.value;
+      document.getElementById("inRule").textContent = RULES[S.client];
+      document.getElementById("igClient").textContent = S.client;
+      document.getElementById("igText").value = (S.ignore[S.client] || []).join("\n");
+    };
+    sel.onchange = () => { syncClient(); saveLocal(); };
+    document.getElementById("inBuild").onclick = build;
+    document.getElementById("igSave").onclick = saveIgnore;
+
+    await loadData();
+    syncClient();
+    drawDrafts();
+  }
+
+  function build() {
+    const text = document.getElementById("inText").value;
+    if (!text.trim() && S.client !== "Private") { J().toast("Paste jobs first"); return; }
+    const found = parse(S.client, text, S.ignore[S.client]);
+    found.forEach((d) => { if (d.price == null) d.price = Number(S.prices[d.client] || 0); });
+    S.drafts = S.drafts.concat(found);
+    document.getElementById("inText").value = "";
+    saveLocal();
+    drawDrafts();
+    J().toast(found.length + (found.length === 1 ? " job found" : " jobs found"));
+  }
+
+  function drawDrafts() {
+    const { esc } = J();
+    const box = document.getElementById("inDrafts");
+    const withP = S.drafts.map((d, i) => ({ d, i, p: problems(d, S.existing) }));
+    withP.sort((a, b) => (b.p.length > 0) - (a.p.length > 0));
+    const red = withP.filter((x) => x.p.length).length;
+    const ready = withP.length - red;
+
+    document.getElementById("inSummary").innerHTML = S.drafts.length
+      ? `<span>${S.drafts.length} job${S.drafts.length > 1 ? "s" : ""} found</span><span><b class="ok">${ready} ready</b>${red ? ` · <b class="bad">${red} need fixing</b>` : ""}</span>`
+      : `<span class="muted">Pick the client, paste their jobs, and tap Build Jobs.</span>`;
+
+    box.innerHTML = withP.map(({ d, i, p }) => `
+      <div class="draft ${p.length ? "is-red" : "is-green"}">
+        <span class="dot" aria-hidden="true"></span>
+        <div class="draft-text">
+          <div class="draft-name">${esc(d.person || "(no name yet)")}${d.job_no ? ` <span class="jobno">#${esc(d.job_no)}</span>` : ""}${d.service === "Rush" ? ` <span class="rush">Rush</span>` : ""}</div>
+          <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
+          ${!p.length && laterNotes(d) ? `<div class="draft-later">${esc(laterNotes(d))}</div>` : ""}
+        </div>
+        <button class="icon-btn" data-edit="${i}" aria-label="Edit ${esc(d.person || d.address || "job")}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
+        </button>
+      </div>`).join("");
+
+    box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openSheet(Number(b.getAttribute("data-edit"))));
+
+    const area = document.getElementById("inSaveArea");
+    if (!S.drafts.length) { area.innerHTML = ""; return; }
+    area.innerHTML = `
+      <label class="check-line"><input type="checkbox" id="inToday" ${S.addToday ? "checked" : ""}> Also add to Today's route</label>
+      <button class="btn go" id="inSave" ${ready ? "" : "disabled"}>Save ${ready} Ready Job${ready === 1 ? "" : "s"}</button>
+      ${red ? `<p class="muted small center">Red jobs wait here until you fix them.</p>` : ""}
+      <button class="btn ghost" id="inClear">Clear all drafts</button>`;
+    document.getElementById("inToday").onchange = (e) => { S.addToday = e.target.checked; };
+    document.getElementById("inSave").onclick = saveReady;
+    document.getElementById("inClear").onclick = () => {
+      if (!confirm("Remove all drafts on this screen? Saved jobs are not affected.")) return;
+      S.drafts = []; saveLocal(); drawDrafts();
+    };
+  }
+
+  // ---------- edit sheet ----------
+  function openSheet(i) {
+    const { esc } = J();
+    const d = S.drafts[i];
+    const back = document.getElementById("sheetBack");
+    const opt = (list, v) => list.map((o) => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("");
+    back.hidden = false;
+    back.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+        <h2 id="shTitle">Edit job</h2>
+        <div class="grid2">
+          <label>Client<select id="f_client">${opt(CLIENTS, d.client)}</select></label>
+          <label>Standard / Rush<select id="f_service">${opt(["Standard", "Rush"], d.service)}</select></label>
+          <label>Job #<input id="f_job_no" value="${esc(d.job_no)}"></label>
+          <label>Price<input id="f_price" inputmode="decimal" value="${esc(d.price ?? 0)}"></label>
+        </div>
+        <label>Person to serve<input id="f_person" value="${esc(d.person)}"></label>
+        <label>Address<textarea id="f_address" rows="2">${esc(d.address)}</textarea></label>
+        <div class="grid2">
+          <label>County<select id="f_county">${opt(["", "Osceola", "Orange", "Other"], d.county)}</select></label>
+          <label>Due date<input id="f_due_date" type="date" value="${esc(d.due_date)}"></label>
+        </div>
+        <label>Notes<textarea id="f_notes" rows="2">${esc(d.notes)}</textarea></label>
+        <div class="private-only" ${d.client === "Private" ? "" : "hidden"}>
+          <div class="grid2">
+            <label>Client phone<input id="f_private_phone" inputmode="tel" value="${esc(d.private_phone)}"></label>
+            <label>Client email<input id="f_private_email" inputmode="email" value="${esc(d.private_email)}"></label>
+          </div>
+          <label class="check-line"><input type="checkbox" id="f_paid_upfront" ${d.paid_upfront ? "checked" : ""}> Paid upfront</label>
+        </div>
+        <details><summary>Original pasted text</summary><pre class="raw">${esc(d.raw_text || "(none)")}</pre></details>
+        <div class="sheet-btns">
+          <button class="btn ghost danger" id="shRemove">Remove</button>
+          <button class="btn" id="shDone">Done</button>
+        </div>
+      </div>`;
+    const $f = (k) => document.getElementById("f_" + k);
+    $f("client").onchange = () => { back.querySelector(".private-only").hidden = $f("client").value !== "Private"; };
+    $f("address").onblur = () => {
+      const cleaned = window.JES_PARSE.cleanAddress($f("address").value);
+      $f("address").value = cleaned;
+      if (!$f("county").value) $f("county").value = countyFor(cleaned) || "";
+    };
+    document.getElementById("shDone").onclick = () => {
+      ["client", "service", "job_no", "person", "address", "county", "due_date", "notes", "private_phone", "private_email"]
+        .forEach((k) => { d[k] = $f(k).value.trim(); });
+      d.address = window.JES_PARSE.cleanAddress(d.address);
+      if (!d.county) d.county = countyFor(d.address);
+      d.price = Number(String($f("price").value).replace(/[^0-9.]/g, "")) || 0;
+      d.paid_upfront = $f("paid_upfront").checked;
+      closeSheet(); saveLocal(); drawDrafts();
+    };
+    document.getElementById("shRemove").onclick = () => {
+      S.drafts.splice(i, 1); closeSheet(); saveLocal(); drawDrafts();
+    };
+    back.onclick = (e) => { if (e.target === back) closeSheet(); };
+    $f("person").focus();
+  }
+  function closeSheet() {
+    const back = document.getElementById("sheetBack");
+    back.hidden = true; back.innerHTML = "";
+  }
+
+  // ---------- save ----------
+  async function saveReady() {
+    const btn = document.getElementById("inSave");
+    btn.disabled = true; btn.textContent = "Saving…";
+    const ready = S.drafts.filter((d) => !problems(d, S.existing).length);
+    const rows = ready.map((d) => ({
+      client: d.client, job_no: d.job_no || null, person: d.person || null, address: d.address,
+      county: d.county, service: d.service || "Standard", due_date: d.due_date || null,
+      price: Number(d.price) || 0, notes: d.notes || null, raw_text: d.raw_text || null,
+      status: "Active", on_today: S.addToday,
+      private_phone: d.private_phone || null, private_email: d.private_email || null,
+      paid_upfront: !!d.paid_upfront
+    }));
+    const { error } = await J().db.from("jes_jobs").insert(rows);
+    if (error) {
+      J().toast("Not saved: " + error.message);
+      btn.disabled = false; btn.textContent = "Try again";
+      return;
+    }
+    S.drafts = S.drafts.filter((d) => !ready.includes(d));
+    saveLocal();
+    await loadData();
+    drawDrafts();
+    J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${S.addToday ? " to Today" : ""}`);
+  }
+
+  async function saveIgnore() {
+    const words = document.getElementById("igText").value.split("\n").map((w) => w.trim()).filter(Boolean);
+    S.ignore[S.client] = words;
+    const { error } = await J().db.from("jes_settings").upsert({ key: "ignore_words", value: S.ignore });
+    J().toast(error ? "Not saved: " + error.message : "Ignore words saved for " + S.client);
+  }
+
+  window.JES_INTAKE = { draw };
+})();

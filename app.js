@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 1: foundation + home screen)
+// J EMPIRE SERVER — app.js (version 2: + Smart Intake hookup)
 (function () {
   "use strict";
 
@@ -42,6 +42,7 @@
       global: { headers: { "x-jempire-key": store.get("jes_key", "") } },
       auth: { persistSession: false }
     });
+    window.JES = { db, esc, money, toast, go: (id) => go(id) };
   }
 
   // ---------- sections ----------
@@ -82,7 +83,7 @@
     current = id;
     drawTabs();
     window.scrollTo(0, 0);
-    const screens = { home: drawHome, add: comingSoon, jobs: comingSoon, route: comingSoon, done: comingSoon, money: comingSoon };
+    const screens = { home: drawHome, add: () => (window.JES_INTAKE ? window.JES_INTAKE.draw() : comingSoon("add")), jobs: comingSoon, route: comingSoon, done: comingSoon, money: comingSoon };
     (screens[id] || drawHome)(id);
   }
 
