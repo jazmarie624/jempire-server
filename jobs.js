@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 2: free map tiles + smarter address finder)
+// J EMPIRE SERVER — jobs.js (version 3: Jobs tab in columns)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -27,77 +27,87 @@
   // =====================================================================
   // JOBS TAB
   // =====================================================================
-  const JS = { filter: "Active", county: "All", q: "", jobs: [] };
-  const FILTERS = ["Active", "Needs address", "Today", "On Hold", "Done", "All"];
+  // Four columns, left to right in the order a job moves:
+  // Needs address → Ready to route → On today's route → On hold
+  const COLS = [
+    { id: "fix",   title: "Needs address",    sub: "Add the address to route it", test: (j) => !isDone(j) && j.status !== "On Hold" && needsAddress(j) },
+    { id: "ready", title: "Ready to route",   sub: "Tap + Today to add",           test: (j) => j.status === "Active" && !needsAddress(j) && !j.on_today },
+    { id: "today", title: "On today's route", sub: "Shown on 3 Route",             test: (j) => j.status === "Active" && !needsAddress(j) && j.on_today },
+    { id: "hold",  title: "On hold",          sub: "Kept, not routed",             test: (j) => j.status === "On Hold" }
+  ];
+  const FILTER_TO_COL = { "Needs address": "fix", "Active": "ready", "Today": "today", "On Hold": "hold" };
+  const JS = { col: "ready", county: "All", q: "", jobs: [] };
 
   async function drawJobs(opts) {
-    if (opts && opts.filter) JS.filter = opts.filter;
+    if (opts && opts.filter && FILTER_TO_COL[opts.filter]) JS.col = FILTER_TO_COL[opts.filter];
     const { esc } = J();
     byId("screen").innerHTML = `
       <section class="jobs">
-        <div class="jobs-head">
+        <div class="jobs-bar">
           <h1>Jobs</h1>
-          <label class="sr" for="jq">Search</label>
-          <input id="jq" class="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
+          <label class="sr" for="jq">Search jobs</label>
+          <input id="jq" class="search" type="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
+          <div class="seg" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="${c === JS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
-        <div class="chips" id="jFilters">${FILTERS.map((f) => `<button class="chip ${f === JS.filter ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
-        <div class="chips" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="chip small ${c === JS.county ? "on" : ""}" data-c="${c}">${c === "All" ? "All counties" : c}</button>`).join("")}</div>
-        <div id="jList" class="jlist"><p class="muted">Loading…</p></div>
+        <div class="chips phone-only" id="jColPick"></div>
+        <div id="jBody"><p class="muted">Loading…</p></div>
       </section>
       <div class="sheet-back" id="sheetBack" hidden></div>`;
-    byId("jFilters").onclick = (e) => { const b = e.target.closest("[data-f]"); if (b) { JS.filter = b.dataset.f; drawJobs(); } };
     byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
     byId("jq").oninput = (e) => { JS.q = e.target.value; drawList(); };
     JS.jobs = await fetchJobs();
     drawList();
   }
 
+  function jobCard(j) {
+    const { esc } = J();
+    const red = !isDone(j) && needsAddress(j);
+    const cls = red ? "is-red" : j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
+    const tags = [
+      j.service === "Rush" ? `<span class="rush">Rush</span>` : "",
+      isDone(j) ? `<span class="tag done">${esc(j.status === "Served" ? "Served" : "Non-serve")}</span>` : "",
+      j.attempt_count && !isDone(j) ? `<span class="tag">Attempt ${j.attempt_count}/5</span>` : "",
+      j.due_date && !isDone(j) ? `<span class="tag">Due ${esc(fmtDate(j.due_date).slice(0, 5))}</span>` : ""
+    ].filter(Boolean).join(" ");
+    const canToday = j.status === "Active" && !red;
+    return `
+      <div class="jcard ${cls}">
+        <div class="jc-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+        <div class="jc-addr">${red ? `<b>${esc(P().problems(j).join(" · "))}</b>${j.address ? " · " : ""}` : ""}${esc(j.address || "")}</div>
+        <div class="jc-meta">${esc(j.client || "")}${j.county ? " · " + esc(j.county) : ""} ${tags}</div>
+        <div class="jc-btns">
+          ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
+          <button class="btn ghost thin" data-open="${j.id}">${red ? "Add address" : "Edit"}</button>
+        </div>
+      </div>`;
+  }
+
   function drawList() {
     const { esc } = J();
     const q = JS.q.toLowerCase().trim();
-    let list = JS.jobs.filter((j) => {
-      if (JS.county !== "All" && j.county !== JS.county) return false;
-      if (q && ![j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)) return false;
-      switch (JS.filter) {
-        case "Active": return j.status === "Active";
-        case "Needs address": return !isDone(j) && needsAddress(j);
-        case "Today": return j.on_today && j.status === "Active";
-        case "On Hold": return j.status === "On Hold";
-        case "Done": return isDone(j);
-        default: return true;
-      }
-    });
+    const byCounty = (j) => JS.county === "All" || j.county === JS.county || (!j.county && JS.county !== "All" && needsAddress(j));
     const dueRank = (j) => (j.due_date ? new Date(j.due_date).getTime() : 9e15);
-    list.sort((a, b) => (b.service === "Rush") - (a.service === "Rush") || dueRank(a) - dueRank(b));
+    const sortJobs = (a, b) => (b.service === "Rush") - (a.service === "Rush") || dueRank(a) - dueRank(b);
+    const body = byId("jBody");
 
-    const box = byId("jList");
-    if (!list.length) { box.innerHTML = `<p class="muted center">No jobs here.</p>`; return; }
-    box.innerHTML = `<p class="muted small">${list.length} job${list.length > 1 ? "s" : ""}</p>` + list.map((j) => {
-      const red = !isDone(j) && needsAddress(j);
-      const cls = red ? "is-red" : j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
-      const tags = [
-        j.service === "Rush" ? `<span class="rush">Rush</span>` : "",
-        j.status === "On Hold" ? `<span class="tag hold">On hold</span>` : "",
-        isDone(j) ? `<span class="tag done">${esc(j.status === "Served" ? "Served" : "Non-serve")}</span>` : "",
-        j.attempt_count && !isDone(j) ? `<span class="tag">Attempt ${j.attempt_count} of 5</span>` : ""
-      ].join(" ");
-      const canToday = j.status === "Active" && !red;
-      return `
-        <div class="draft ${cls}">
-          <span class="dot" aria-hidden="true"></span>
-          <div class="draft-text">
-            <div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} ${tags}</div>
-            <div class="draft-addr">${red ? `<b>${esc(P().problems(j).join(" · "))}</b>${j.address ? " · " : ""}` : ""}${esc(j.address || "")}</div>
-            <div class="draft-later">${esc(j.client || "")}${j.county ? " · " + esc(j.county) : ""}${j.due_date ? " · Due " + esc(fmtDate(j.due_date)) : ""}</div>
-          </div>
-          ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today's route">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
-          <button class="icon-btn" data-open="${j.id}" aria-label="Edit ${esc(j.person || j.address || "job")}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
-          </button>
-        </div>`;
-    }).join("");
-    box.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs));
-    box.querySelectorAll("[data-today]").forEach((b) => b.onclick = async () => {
+    // Searching shows one list across everything, including finished jobs
+    if (q) {
+      byId("jColPick").innerHTML = "";
+      const hits = JS.jobs.filter((j) => byCounty(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
+      body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(jobCard).join("") || ""}</div>`;
+    } else {
+      const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && c.test(j)).sort(sortJobs) }));
+      byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.title} (${jobs.length})</button>`).join("");
+      body.innerHTML = `<div class="job-cols">${lists.map(({ c, jobs }) => `
+        <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
+          <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
+          <div class="col-list">${jobs.length ? jobs.map(jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
+        </div>`).join("")}</div>
+        <p class="muted small center">Finished jobs live in <b>4 Done</b>, or search for them above.</p>`;
+      byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { JS.col = b.dataset.col; drawList(); } };
+    }
+    body.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs));
+    body.querySelectorAll("[data-today]").forEach((b) => b.onclick = async () => {
       const j = JS.jobs.find((x) => x.id === b.dataset.today);
       j.on_today = !j.on_today;
       if (await updateJob(j.id, { on_today: j.on_today, route_order: null })) { drawList(); J().toast(j.on_today ? "Added to today" : "Removed from today"); }

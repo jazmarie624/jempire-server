@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 4: invoice columns, editable prices, extra charges, open & edit saved invoices)
+// J EMPIRE SERVER — office.js (version 5: Done in columns, invoice job finder, ProVest|Userve picker, Money breakdowns)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -52,53 +52,59 @@
   }
 
   // =====================================================================
-  // DONE TAB — afternoon checklist, grouped by day
+  // DONE TAB — three columns: To check → Checked, ready to bill → Billed
   // =====================================================================
-  let doneFilter = "Needs checking";
+  let doneCol = "check";
   async function drawDone() {
     const { esc, money } = J();
-    byId("screen").innerHTML = `<section class="office"><div class="jobs-head"><h1>Done</h1></div>
-      <div class="chips" id="dFilter">${["Needs checking", "All done"].map((f) => `<button class="chip ${f === doneFilter ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
-      <div id="dList"><p class="muted">Loading…</p></div></section>
+    byId("screen").innerHTML = `<section class="office"><div class="jobs-head"><h1>Done</h1><span class="muted small">Tick the 3 boxes after you check each job in the client's app.</span></div>
+      <div class="chips phone-only" id="dColPick"></div>
+      <div id="dBody"><p class="muted">Loading…</p></div></section>
       <div class="sheet-back" id="sheetBack" hidden></div>`;
-    byId("dFilter").onclick = (e) => { const b = e.target.closest("[data-f]"); if (b) { doneFilter = b.dataset.f; drawDone(); } };
     const D = await load();
-    let list = D.jobs.filter(isDone);
     const checked = (j) => j.chk_client_app && j.chk_proof && j.chk_price;
-    if (doneFilter === "Needs checking") list = list.filter((j) => !checked(j));
-    if (!list.length) { byId("dList").innerHTML = `<p class="muted center">${doneFilter === "Needs checking" ? "Everything is checked off. ✓" : "No finished jobs yet."}</p>`; return; }
-
-    const days = {};
-    list.forEach((j) => { const k = j.done_at ? isoDay(j.done_at) : "unknown"; (days[k] = days[k] || []).push(j); });
-    byId("dList").innerHTML = Object.keys(days).sort().reverse().map((k) => `
-      <h2 class="day-head">${k === "unknown" ? "No date" : fromIso(k).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</h2>
-      ${days[k].map((j) => `
-        <div class="check-card ${checked(j) ? "all-ok" : ""}">
-          <div class="draft-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}
-            <span class="tag done">${j.status === "Served" ? "Served" : "Non-serve"}</span>${j.invoice_id ? ` <span class="tag">On invoice</span>` : ""}</div>
-          <div class="draft-addr">${esc(j.client || "")} · ${esc(j.address || "")}</div>
-          <div class="checks">
-            <label><input type="checkbox" data-chk="chk_client_app" data-id="${j.id}" ${j.chk_client_app ? "checked" : ""}> Entered in ${esc(j.client || "client")}'s app</label>
-            <label><input type="checkbox" data-chk="chk_proof" data-id="${j.id}" ${j.chk_proof ? "checked" : ""}> Proof uploaded there</label>
-            <label><input type="checkbox" data-chk="chk_price" data-id="${j.id}" ${j.chk_price ? "checked" : ""}> Price confirmed</label>
-          </div>
-          <div class="row-gap">
-            <label class="price-in">$<input inputmode="decimal" data-price="${j.id}" value="${Number(j.price || 0).toFixed(2)}" aria-label="Price"></label>
-            <button class="btn ghost thin" data-open="${j.id}">Edit job</button>
-          </div>
-        </div>`).join("")}`).join("");
+    const billed = (j) => !!j.invoice_id || j.paid_upfront;
+    const monthAgo = Date.now() - 30 * 864e5;
+    const done = D.jobs.filter(isDone).sort((a, b) => new Date(b.done_at || 0) - new Date(a.done_at || 0));
+    const COLS = [
+      { id: "check", title: "To check", sub: "Verify in the client's app", jobs: done.filter((j) => !checked(j)) },
+      { id: "ready", title: "Checked · ready to bill", sub: "Put these on an invoice", jobs: done.filter((j) => checked(j) && !billed(j)) },
+      { id: "billed", title: "Billed", sub: "On an invoice (last 30 days)", jobs: done.filter((j) => checked(j) && billed(j) && new Date(j.done_at || 0).getTime() > monthAgo) }
+    ];
+    const card = (j) => `
+      <div class="dcard ${checked(j) ? "all-ok" : ""}">
+        <div class="jc-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+        <div class="jc-meta">${esc(j.client || "")} · <span class="tag done">${j.status === "Served" ? "Served" : "Non-serve"}</span> ${j.done_at ? esc(md(j.done_at)) : ""}${j.invoice_id ? ` · <span class="tag">On invoice</span>` : ""}</div>
+        <div class="mini-checks">
+          <label><input type="checkbox" data-chk="chk_client_app" data-id="${j.id}" ${j.chk_client_app ? "checked" : ""}> In app</label>
+          <label><input type="checkbox" data-chk="chk_proof" data-id="${j.id}" ${j.chk_proof ? "checked" : ""}> Proof</label>
+          <label><input type="checkbox" data-chk="chk_price" data-id="${j.id}" ${j.chk_price ? "checked" : ""}> Price</label>
+        </div>
+        <div class="jc-btns">
+          <label class="price-in">$<input inputmode="decimal" data-price="${j.id}" value="${Number(j.price || 0).toFixed(2)}" aria-label="Price" ${j.invoice_id ? "disabled" : ""}></label>
+          <button class="btn ghost thin" data-open="${j.id}">Edit</button>
+        </div>
+      </div>`;
+    byId("dColPick").innerHTML = COLS.map((c) => `<button class="chip ${c.id === doneCol ? "on" : ""}" data-col="${c.id}">${c.title} (${c.jobs.length})</button>`).join("");
+    byId("dColPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { doneCol = b.dataset.col; drawDone(); } };
+    byId("dBody").innerHTML = `<div class="job-cols three">${COLS.map((c) => `
+      <div class="job-col done-${c.id} ${c.id === doneCol ? "phone-on" : ""}">
+        <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${c.jobs.length}</span></div>
+        <div class="col-list">${c.jobs.length ? c.jobs.map(card).join("") : `<p class="muted small center">${c.id === "check" ? "All checked ✓" : "Nothing here."}</p>`}</div>
+      </div>`).join("")}</div>`;
     const findJ = (id) => D.jobs.find((j) => j.id === id);
-    byId("dList").querySelectorAll("[data-chk]").forEach((c) => c.onchange = async () => {
+    const body = byId("dBody");
+    body.querySelectorAll("[data-chk]").forEach((c) => c.onchange = async () => {
       const j = findJ(c.dataset.id); j[c.dataset.chk] = c.checked;
       await upd("jes_jobs", j.id, { [c.dataset.chk]: c.checked });
-      c.closest(".check-card").classList.toggle("all-ok", checked(j));
+      if (checked(j)) { J().toast("All checked ✓ — moved to ready to bill"); drawDone(); }
     });
-    byId("dList").querySelectorAll("[data-price]").forEach((inp) => inp.onchange = async () => {
+    body.querySelectorAll("[data-price]").forEach((inp) => inp.onchange = async () => {
       const v = Number(String(inp.value).replace(/[^0-9.]/g, "")) || 0;
       inp.value = v.toFixed(2);
       if (await upd("jes_jobs", inp.dataset.price, { price: v })) J().toast("Price saved " + money(v));
     });
-    byId("dList").querySelectorAll("[data-open]").forEach((b) => b.onclick = () => window.JES_JOBS.openJob(findJ(b.dataset.open), drawDone));
+    body.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => window.JES_JOBS.openJob(findJ(b.dataset.open), drawDone));
   }
 
   // =====================================================================
@@ -148,17 +154,52 @@
     };
 
     byId("screen").querySelector(".office").innerHTML = `
-      <div class="jobs-head"><h1>Invoices</h1><span class="muted small">Tap any invoice to see its jobs, change prices, or add charges.</span></div>
+      <div class="jobs-bar"><h1>Invoices</h1>
+        <label class="sr" for="invFind">Find a job</label>
+        <input id="invFind" class="search" type="search" placeholder="Find a job # or name — where is it?"></div>
+      <div id="findOut"></div>
       ${notBilled ? `<button class="alert tap" id="mNotBilled">${notBilled} finished job${notBilled > 1 ? "s are" : " is"} not on an invoice yet. Tap to start one.</button>` : ""}
       <div class="chips phone-only" id="colPick">${Object.keys(GROUPS).map((g) => `<button class="chip ${g === phoneCol ? "on" : ""}" data-col="${g}">${g}</button>`).join("")}</div>
       <div class="inv-cols">${Object.keys(GROUPS).map(col).join("")}</div>
       <div id="printSheet" class="print-only"></div>`;
 
     const scr = byId("screen");
+    byId("invFind").oninput = (e) => findJob(e.target.value, D);
     byId("colPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { phoneCol = b.dataset.col; drawInvoices(); } };
     scr.querySelectorAll("[data-new]").forEach((b) => b.onclick = () => newInvoice(D, b.dataset.new));
     if (byId("mNotBilled")) byId("mNotBilled").onclick = () => newInvoice(D, phoneCol);
     scr.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openInvoice(D.invoices.find((i) => i.id === b.dataset.open), D));
+  }
+
+  // ---------- job finder: "where is this job?" ----------
+  function findJob(q, D) {
+    const { esc, money } = J();
+    const out = byId("findOut");
+    q = (q || "").trim().toLowerCase();
+    if (q.length < 2) { out.innerHTML = ""; return; }
+    const invById = {}; D.invoices.forEach((i) => { invById[i.id] = i; });
+    const hits = D.jobs.filter((j) => [j.job_no, j.person, j.address].join(" ").toLowerCase().includes(q)).slice(0, 12);
+    const where = (j) => {
+      const inv = j.invoice_id && invById[j.invoice_id];
+      if (inv) return inv.status === "Paid"
+        ? { cls: "ok", text: `Paid ✓ — ${inv.grp} invoice ${md(fromIso(inv.period_start))}–${md(fromIso(inv.period_end))}, paid ${inv.paid_on ? mdy(fromIso(inv.paid_on)) : ""}`, inv }
+        : { cls: "bad", text: `On a ${inv.grp} invoice (${md(fromIso(inv.period_start))}–${md(fromIso(inv.period_end))}) — still PENDING PAYMENT`, inv };
+      if (j.paid_upfront) return { cls: "ok", text: "Paid upfront (private)" };
+      if (isDone(j) && j.client === "ABC Legal") return { cls: "ok", text: "Finished — ABC pays through its own app" };
+      if (isDone(j)) return { cls: "bad", text: `Finished ${j.done_at ? md(j.done_at) : ""} but NOT on an invoice yet` };
+      if (j.status === "On Hold") return { cls: "", text: "On hold — not routed, not billed" };
+      return { cls: "", text: `Still active — attempt ${j.attempt_count || 0} of 5, not billable yet` };
+    };
+    out.innerHTML = `<div class="find-box">${hits.length ? hits.map((j) => {
+      const w = where(j);
+      return `<div class="find-line">
+        <div class="draft-text"><div class="jc-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} · ${esc(j.client || "")} · ${money(j.price)}</div>
+          <div class="find-where ${w.cls}">${esc(w.text)}</div></div>
+        <div class="jc-btns">${w.inv ? `<button class="btn thin" data-findinv="${w.inv.id}">Open invoice</button>` : ""}<button class="btn ghost thin" data-findjob="${j.id}">Open job</button></div>
+      </div>`;
+    }).join("") : `<p class="muted">No job matches “${esc(q)}”.</p>`}</div>`;
+    out.querySelectorAll("[data-findinv]").forEach((b) => b.onclick = () => openInvoice(invById[b.dataset.findinv], D));
+    out.querySelectorAll("[data-findjob]").forEach((b) => b.onclick = () => window.JES_JOBS.openJob(D.jobs.find((j) => j.id === b.dataset.findjob), drawInvoices));
   }
 
   // ---------- open a saved invoice: see jobs, edit prices, add charges, mark paid ----------
@@ -293,14 +334,15 @@
     byId("screen").querySelector(".office").innerHTML = `
       <div class="jobs-head"><h1>Money</h1><span class="muted">Week: ${esc(periodLabel(ws, we))}</span></div>
       <div class="glance money-grid">
-        <div class="tile green"><div class="tile-label">Earned this week</div><div class="tile-value">${money(earned)}</div><div class="tile-sub">${doneWeek.length} done · goal ${money(goal)}</div>
-          <div class="bar"><span style="width:${Math.min(100, goal ? earned / goal * 100 : 0)}%"></span></div></div>
-        <div class="tile"><div class="tile-label">Gas, tolls &amp; costs</div><div class="tile-value">${money(costs)}</div><div class="tile-sub">${milesWeek ? milesWeek.toFixed(0) + " miles logged" : "Nothing logged yet"}</div></div>
-        <div class="tile green"><div class="tile-label">Real profit</div><div class="tile-value">${money(earned - costs)}</div><div class="tile-sub">Earned minus costs</div></div>
-        <button class="tile red" data-go="invoices"><div class="tile-label">Owed to you ›</div><div class="tile-value">${money(owed)}</div><div class="tile-sub">Pending invoices</div></button>
-        <div class="tile green"><div class="tile-label">Paid this week</div><div class="tile-value">${money(paidWeek)}</div><div class="tile-sub">Money received</div></div>
-        <button class="tile" data-go="jobs" data-filter="Active"><div class="tile-label">Still attempting ›</div><div class="tile-value">${attempting}</div><div class="tile-sub">Not counted as money yet</div></button>
+        <button class="tile green" data-bd="earned"><div class="tile-label">Earned this week ›</div><div class="tile-value">${money(earned)}</div><div class="tile-sub">${doneWeek.length} done · goal ${money(goal)}</div>
+          <div class="bar"><span style="width:${Math.min(100, goal ? earned / goal * 100 : 0)}%"></span></div></button>
+        <button class="tile" data-bd="costs"><div class="tile-label">Gas, tolls &amp; costs ›</div><div class="tile-value">${money(costs)}</div><div class="tile-sub">${milesWeek ? milesWeek.toFixed(0) + " miles logged" : "Nothing logged yet"}</div></button>
+        <button class="tile green" data-bd="profit"><div class="tile-label">Real profit ›</div><div class="tile-value">${money(earned - costs)}</div><div class="tile-sub">Earned minus costs</div></button>
+        <button class="tile red" data-bd="owed"><div class="tile-label">Owed to you ›</div><div class="tile-value">${money(owed)}</div><div class="tile-sub">Pending invoices</div></button>
+        <button class="tile green" data-bd="paid"><div class="tile-label">Paid this week ›</div><div class="tile-value">${money(paidWeek)}</div><div class="tile-sub">Money received</div></button>
+        <button class="tile" data-bd="attempting"><div class="tile-label">Still attempting ›</div><div class="tile-value">${attempting}</div><div class="tile-sub">Not counted as money yet</div></button>
       </div>
+      <div id="bd"></div>
       <div class="row-gap wrap"><button class="btn ghost" id="mExpense">+ Log gas / tolls / miles</button></div>
       ${expWeek.length ? `<h2>This week's costs</h2><div class="exp-list">${expWeek.map((e) => `
         <div class="exp-line"><span>${esc(mdy(fromIso(e.day)))} · <b>${esc(e.kind)}</b>${e.miles ? " · " + esc(e.miles) + " mi" : ""}${e.note ? " · " + esc(e.note) : ""}</span>
@@ -317,6 +359,37 @@
 
     byId("mExpense").onclick = () => addExpense();
     const scr = byId("screen");
+
+    // ---- "where does this number come from?" ----
+    const invLabel = (i) => `${i.grp} · ${i.period_start ? md(fromIso(i.period_start)) + "–" + md(fromIso(i.period_end)) : ""}`;
+    const line = (left, right, cls) => `<div class="bd-line ${cls || ""}"><span>${left}</span><b>${right}</b></div>`;
+    const jobLeft = (j) => `${esc(j.done_at ? md(j.done_at) : "")} · ${esc(j.person || "(no name)")}${j.job_no ? " #" + esc(j.job_no) : ""} · ${esc(j.client || "")}`;
+    const BD = {
+      earned: () => ["Earned this week = every job finished this week × its price",
+        doneWeek.map((j) => line(jobLeft(j), money(j.price))).join("") || "<p class='muted'>No finished jobs this week yet.</p>", money(earned)],
+      costs: () => ["Costs this week = everything you logged",
+        expWeek.map((e) => line(`${esc(mdy(fromIso(e.day)))} · ${esc(e.kind)}${e.miles ? " · " + esc(e.miles) + " mi" : ""}${e.note ? " · " + esc(e.note) : ""}`, money(e.amount))).join("") || "<p class='muted'>Nothing logged this week.</p>", money(costs)],
+      profit: () => ["Real profit = earned minus costs",
+        line("Earned this week", money(earned)) + line("minus gas, tolls &amp; costs", "− " + money(costs)), money(earned - costs)],
+      owed: () => ["Owed to you = every invoice not marked paid yet",
+        D.invoices.filter((i) => i.status === "Pending").map((i) => line(esc(invLabel(i)) + ` · ${(i.lines || []).filter((l) => !l.extra).length} jobs`, money(i.total))).join("") || "<p class='muted'>Nothing owed. ✓</p>", money(owed)],
+      paid: () => ["Paid this week = invoices marked paid this week + private jobs paid upfront",
+        D.invoices.filter((i) => i.status === "Paid" && i.paid_on && inWeek(fromIso(i.paid_on))).map((i) => line(`${esc(invLabel(i))} · paid ${esc(md(fromIso(i.paid_on)))}`, money(i.total))).join("") +
+        D.jobs.filter((j) => j.paid_upfront && inWeek(j.done_at)).map((j) => line(jobLeft(j) + " · paid upfront", money(j.price))).join("") || "<p class='muted'>Nothing paid yet this week.</p>", money(paidWeek)],
+      attempting: () => ["Still attempting = active jobs with at least 1 attempt (paid only once served or after 5 attempts)",
+        D.jobs.filter((j) => j.status === "Active" && (j.attempt_count || 0) > 0).map((j) => line(`${esc(j.person || "(no name)")}${j.job_no ? " #" + esc(j.job_no) : ""} · ${esc(j.client || "")}`, `Attempt ${j.attempt_count}/5`)).join("") || "<p class='muted'>None.</p>", attempting + " jobs"]
+    };
+    let openBd = "";
+    scr.querySelectorAll("[data-bd]").forEach((t) => t.onclick = () => {
+      const k = t.dataset.bd;
+      scr.querySelectorAll("[data-bd]").forEach((x) => x.classList.toggle("tile-on", x === t && openBd !== k));
+      if (openBd === k) { openBd = ""; byId("bd").innerHTML = ""; return; }
+      openBd = k;
+      const [title, rows, tot] = BD[k]();
+      byId("bd").innerHTML = `<div class="bd-box"><div class="bd-title">${title}</div>${rows}<div class="bd-line bd-total"><span>Total</span><b>${tot}</b></div>
+        ${k === "owed" ? `<button class="btn thin" data-go="invoices">Open Invoices</button>` : k === "attempting" ? `<button class="btn thin" data-go="jobs" data-filter="Active">Open Jobs</button>` : ""}</div>`;
+      byId("bd").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
     scr.querySelectorAll("[data-delexp]").forEach((b) => b.onclick = async () => {
       if (!confirm("Delete this cost?")) return;
       await J().db.from("jes_expenses").delete().eq("id", b.dataset.delexp); drawMoney();
@@ -385,7 +458,8 @@
             <label class="check-line"><input type="checkbox" id="niAll" ${st.showAll ? "checked" : ""}> Show jobs with no attempts too</label>
           </div>
           <p class="muted small">Tick a job, then change its price on the right if this one pays differently.</p>
-          <div class="pick-list">${pool.length ? pool.map((j) => {
+          ${(() => {
+            const row = (j) => {
             const tag = j.status === "Served" ? `<span class="tag done">Served ${j.done_at ? md(j.done_at) : ""}</span>`
               : j.status === "Non-Serve Complete" ? `<span class="tag navy">Non-serve</span>`
               : `<span class="tag hold">Attempt ${j.attempt_count || 0}/5</span>`;
@@ -398,7 +472,14 @@
               </label>
               ${on ? `<label class="price-in">$<input inputmode="decimal" data-price="${j.id}" value="${priceOf(j).toFixed(2)}" aria-label="Price"></label>` : `<b class="pick-amt">${money(j.price)}</b>`}
             </div>`;
-          }).join("") : `<p class="muted">No ${esc(st.grp)} jobs to show.</p>`}</div>
+            };
+            if (!pool.length) return `<p class="muted">No ${esc(st.grp)} jobs to show.</p>`;
+            if (st.grp !== "Jean") return `<div class="pick-list">${pool.map(row).join("")}</div>`;
+            const side = (c) => { const js = pool.filter((j) => j.client === c);
+              return `<div class="pick-col"><div class="col-head"><h2>${c}</h2><span class="col-count">${js.filter((j) => st.picked.has(j.id)).length} of ${js.length}</span></div>
+                <div class="pick-list">${js.length ? js.map(row).join("") : `<p class="muted small">No ${c} jobs.</p>`}</div></div>`; };
+            return `<div class="pick-cols">${side("ProVest")}${side("Userve")}</div>`;
+          })()}
           <div class="inv-sec">Extra charges</div>
           ${st.extras.map((e, k) => `
             <div class="ov-line">

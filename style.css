@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 11: invoice columns + editing) */
+/* J EMPIRE SERVER — style.css (version 12: columns everywhere, job finder, money breakdowns) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -423,6 +423,71 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   .phone-only { display: none; }
   .inv-cols { display: grid; grid-template-columns: repeat(3, 1fr); align-items: start; }
   .inv-col { display: flex; }
+}
+
+
+/* ================= Columns everywhere (Jobs, Done, invoice picker) ================= */
+.jobs-bar { display: flex; flex-direction: column; gap: 0.5rem; }
+.jobs-bar .search { width: 100%; }
+.jobs-bar .seg { align-self: flex-start; }
+.job-cols { display: flex; flex-direction: column; gap: 0.8rem; }
+.job-col { display: none; flex-direction: column; gap: 0.5rem; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 0.7rem; }
+.job-col.phone-on { display: flex; }
+.job-col .col-head h2 { font-size: 1.25rem; }
+.col-count { font-family: var(--serif); font-size: 1.6rem; font-weight: 700; color: var(--navy); }
+.col-fix { border-top: 4px solid var(--red); }
+.col-ready { border-top: 4px solid var(--green); }
+.col-today { border-top: 4px solid var(--navy); }
+.col-hold { border-top: 4px solid var(--gold); }
+.done-check { border-top: 4px solid var(--red); }
+.done-ready { border-top: 4px solid var(--green); }
+.done-billed { border-top: 4px solid var(--navy); }
+.alert-chip { border-color: var(--red); color: var(--red); }
+.chip.alert-chip.on { background: var(--red); color: #fff; }
+.jcard, .dcard { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.55rem 0.65rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.jcard.is-red { border: 2px solid var(--red); background: var(--red-bg); }
+.jcard.is-hold { border-color: var(--gold); }
+.dcard.all-ok { border-color: var(--green); background: var(--green-bg); }
+.jc-name { font-weight: 700; font-size: 0.95rem; }
+.jc-addr { font-size: 0.85rem; color: var(--navy-2); }
+.jc-addr b { color: var(--red); }
+.jc-meta { font-size: 0.78rem; color: var(--gold-text); font-weight: 600; }
+.jc-btns { display: flex; gap: 0.4rem; margin-top: 0.3rem; align-items: center; flex-wrap: wrap; }
+.jc-btns .btn.thin, .jc-btns .today-btn { min-height: 40px; font-size: 0.85rem; }
+.jc-btns .price-in input { width: 5.5rem; min-height: 40px; }
+.search-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; }
+.mini-checks { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.mini-checks label { display: flex; align-items: center; gap: 0.35rem; min-height: 40px; padding: 0 0.55rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); font-weight: 700; font-size: 0.85rem; }
+.mini-checks input { width: 20px; height: 20px; }
+.pick-cols { display: flex; flex-direction: column; gap: 0.7rem; }
+.pick-col { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.pick-col .col-head h2 { font-size: 1.2rem; }
+.pick-col .col-count { font-size: 0.95rem; font-family: var(--sans); }
+
+/* job finder on Invoices */
+.find-box { background: var(--paper); border: 2px solid var(--navy); border-radius: 14px; padding: 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.find-line { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 0.4rem; }
+.find-where { font-weight: 700; font-size: 0.9rem; }
+.find-where.ok { color: var(--green); } .find-where.bad { color: var(--red); }
+
+/* money breakdowns */
+.tile-on { outline: 3px solid var(--gold); }
+.bd-box { background: var(--paper); border: 2px solid var(--gold); border-radius: 14px; padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.bd-title { font-weight: 700; margin-bottom: 0.3rem; }
+.bd-line { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.92rem; padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
+.bd-total { border-bottom: none; border-top: 2px solid var(--navy); font-size: 1.05rem; margin-bottom: 0.4rem; }
+
+@media (min-width: 900px) {
+  .jobs-bar { flex-direction: row; align-items: center; }
+  .jobs-bar h1 { flex-shrink: 0; }
+  .jobs-bar .search { flex: 1; max-width: 32rem; margin-left: auto; }
+  .jobs-bar .seg { align-self: center; }
+  .job-cols { display: grid; grid-template-columns: repeat(4, 1fr); align-items: start; }
+  .job-cols.three { grid-template-columns: repeat(3, 1fr); }
+  .job-col { display: flex; max-height: 75vh; overflow-y: auto; }
+  .search-grid { grid-template-columns: repeat(3, 1fr); }
+  .pick-cols { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+  .pick-col .pick-list { max-height: 50vh; overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
