@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 10: iPhone-friendly tabs + red count badges)
+// J EMPIRE SERVER — app.js (version 11: waiting-on-papers reminders)
 (function () {
   "use strict";
 
@@ -68,7 +68,7 @@
   let BADGE = {};
   async function refreshBadges() {
     if (!db) return;
-    const { data } = await db.from("jes_jobs").select("status,on_today,address,county,client,chk_client_app,chk_proof,chk_price,invoice_id,paid_upfront");
+    const { data } = await db.from("jes_jobs").select("status,on_today,address,county,client,chk_client_app,chk_proof,chk_price,invoice_id,paid_upfront,has_papers");
     if (!data) return;
     const done = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
     const routable = (j) => j.address && j.county && /\b(?:FL|Florida)\b[\s,]*\d{5}/i.test(j.address);
@@ -76,7 +76,7 @@
     const toBill = data.filter((j) => done(j) && j.chk_client_app && j.chk_proof && j.chk_price && !j.invoice_id && !j.paid_upfront && j.client !== "ABC Legal").length;
     BADGE = {
       jobs: data.filter((j) => j.status === "Active" && !(j.on_today && routable(j))).length,
-      route: data.filter((j) => j.status === "Active" && j.on_today && routable(j)).length,
+      route: data.filter((j) => j.status === "Active" && j.on_today && routable(j) && j.has_papers !== false).length,
       done: toCheck, invoices: toBill, office: toCheck + toBill
     };
     drawTabs();
@@ -205,8 +205,14 @@
     const noAddress = jobs.filter((j) => j.status === "Active" && needsFixing(j));
     if (noAddress.length) alerts.push(`${noAddress.length} saved job${noAddress.length > 1 ? "s are" : " is"} missing an address and can't be routed yet. Tap to fix.`);
 
+    // Waiting on papers from Jean (ProVest + Userve)
+    const waiting = jobs.filter((j) => j.status === "Active" && ["ProVest", "Userve"].includes(j.client) && j.has_papers === false);
+    const dueSoon = waiting.filter((j) => j.due_date && new Date(j.due_date).getTime() - Date.now() < 3 * 864e5);
+    if (dueSoon.length) alerts.push(`${dueSoon.length} job${dueSoon.length > 1 ? "s" : ""} still waiting on papers ${dueSoon.length > 1 ? "are" : "is"} due within 3 days — ask Jean for ${dueSoon.length > 1 ? "them" : "it"} early.`);
+    if (waiting.length) alerts.push(`${waiting.length} job${waiting.length > 1 ? "s are" : " is"} waiting on papers from Jean.`);
+
     const threeDays = Date.now() - 3 * 864e5;
-    const idle = jobs.filter((j) => j.status === "Active" && !needsFixing(j) && !j.on_today &&
+    const idle = jobs.filter((j) => j.status === "Active" && !needsFixing(j) && !j.on_today && j.has_papers !== false &&
       (j.attempt_count || 0) === 0 && j.created_at && new Date(j.created_at).getTime() < threeDays);
     if (idle.length) alerts.push(`${idle.length} job${idle.length > 1 ? "s have" : " has"} been sitting 3+ days with no attempt and no route. Add to a route or put on hold?`);
 
@@ -220,7 +226,7 @@
     if (forgot.length) alerts.push(`${forgot.length} finished job${forgot.length > 1 ? "s are" : " is"} over a week old and not on an invoice yet.`);
 
     $("#alerts").innerHTML = alerts.length
-      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" ${/invoice/.test(a) ? 'data-go="invoices"' : /address/.test(a) ? 'data-go="jobs" data-filter="Needs address"' : 'data-go="jobs" data-filter="Active"'}>${esc(a)}</button>`).join("")}</div>`
+      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" ${/invoice/.test(a) ? 'data-go="invoices"' : /papers/.test(a) ? 'data-go="jobs" data-filter="Papers"' : /address/.test(a) ? 'data-go="jobs" data-filter="Needs address"' : 'data-go="jobs" data-filter="Active"'}>${esc(a)}</button>`).join("")}</div>`
       : "";
   }
 

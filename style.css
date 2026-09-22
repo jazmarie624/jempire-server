@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 16: iPhone fit — no sideways scrolling, tab badges) */
+/* J EMPIRE SERVER — style.css (version 18: waiting on papers) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -588,5 +588,28 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
 @media (max-width: 380px) {
   .brand-name { display: none; }
 }
+
+
+/* ================= Route: start from / live route / nearby ================= */
+.start-from { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
+.sf-label { font-weight: 700; font-size: 0.9rem; color: var(--gold-text); }
+.start-from .seg { flex: 1; }
+.start-from .seg button { flex: 1; }
+#rGo { font-size: 1.1rem; }
+.route-live { background: var(--green); color: #fff; font-weight: 700; border-radius: 12px; padding: 0.5rem 0.8rem; font-size: 0.92rem; }
+.near-wrap { position: sticky; top: 3.8rem; z-index: 20; }
+.near-alert {
+  background: var(--gold-soft); border: 3px solid var(--navy); border-radius: 14px; padding: 0.7rem 0.8rem;
+  display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 4px 14px rgba(31,42,68,.25);
+}
+.next-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 1.5px; color: var(--green); }
+
+
+/* ================= Waiting on papers ================= */
+.papers-switch { display: flex; flex-direction: column; gap: 0.4rem; background: var(--paper); border: 2px solid var(--gold); border-radius: 12px; padding: 0.55rem 0.7rem; }
+.papers-switch .seg button { flex: 1; }
+.paper-wait { color: var(--gold-text); font-weight: 700; }
+.col-papers { border-top: 4px solid var(--gold); }
+.tag-urgent { background: var(--red); border-color: var(--red); color: #fff; }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

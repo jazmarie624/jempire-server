@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 6: tab badges refresh after save)
+// J EMPIRE SERVER — intake.js (version 7: "Papers in hand?" for ProVest + Userve)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -77,9 +77,12 @@
   const toIsoDate = (m) => `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
   const STREET_START = /^\d{1,6}[A-Za-z]?\s+[A-Za-z0-9]/;
 
+  // Jean prints ProVest + Userve papers and hands them over weekly
+  const PAPER_CLIENTS = ["ProVest", "Userve"];
   function blankDraft(client) {
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
-      due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false };
+      due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
+      has_papers: !PAPER_CLIENTS.includes(client) };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
   const nameKey = (n) => (n || "").toLowerCase().replace(/(\.\.\.|…)\s*$/, "").replace(/[^a-z0-9& ]/g, " ").replace(/\s+/g, " ").trim();
@@ -363,6 +366,7 @@
         </div>
         <div class="intake-right">
           <div class="summary" id="inSummary"></div>
+          <div id="inPapers"></div>
           <div class="drafts" id="inDrafts"></div>
           <div class="save-area" id="inSaveArea"></div>
         </div>
@@ -405,9 +409,27 @@
     J().toast(found.length + (found.length === 1 ? " job found" : " jobs found"));
   }
 
+  function drawPapersSwitch() {
+    const box = document.getElementById("inPapers"); if (!box) return;
+    const jean = S.drafts.filter((d) => PAPER_CLIENTS.includes(d.client));
+    if (!jean.length) { box.innerHTML = ""; return; }
+    const have = jean.filter((d) => d.has_papers).length;
+    box.innerHTML = `<div class="papers-switch">
+      <span><b>Papers in hand?</b> <span class="muted small">(${jean.length} ProVest/Userve job${jean.length > 1 ? "s" : ""})</span></span>
+      <div class="seg">
+        <button class="${have === 0 ? "on" : ""}" data-pp="no">No — waiting on Jean</button>
+        <button class="${have === jean.length ? "on" : ""}" data-pp="yes">Yes, I have them</button>
+      </div></div>`;
+    box.querySelectorAll("[data-pp]").forEach((b) => b.onclick = () => {
+      jean.forEach((d) => { d.has_papers = b.dataset.pp === "yes"; });
+      saveLocal(); drawDrafts();
+    });
+  }
+
   function drawDrafts() {
     const { esc } = J();
     const box = document.getElementById("inDrafts");
+    drawPapersSwitch();
     const withP = S.drafts.map((d, i) => {
       const dup = duplicateOf(d, S.existing);
       return { d, i, dup, p: dup ? [dup] : problems(d) };
@@ -429,6 +451,7 @@
           <div class="draft-name">${esc(d.person || "(no name yet)")}${d.job_no ? ` <span class="jobno">#${esc(d.job_no)}</span>` : ""}${d.service === "Rush" ? ` <span class="rush">Rush</span>` : ""}</div>
           <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
           ${!p.length && laterNotes(d) ? `<div class="draft-later">${esc(laterNotes(d))}</div>` : ""}
+          ${PAPER_CLIENTS.includes(d.client) && !d.has_papers ? `<div class="draft-later paper-wait">📄 Waiting on papers from Jean</div>` : ""}
         </div>
         <button class="icon-btn" data-edit="${i}" aria-label="Edit ${esc(d.person || d.address || "job")}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
@@ -476,6 +499,7 @@
           <label>Due date<input id="f_due_date" type="date" value="${esc(d.due_date)}"></label>
         </div>
         <label>Notes<textarea id="f_notes" class="notes-box" rows="5">${esc(d.notes)}</textarea></label>
+        <label class="check-line" ${PAPER_CLIENTS.includes(d.client) ? "" : "hidden"} id="f_papers_line"><input type="checkbox" id="f_has_papers" ${d.has_papers ? "checked" : ""}> I have the papers for this job</label>
         <div class="private-only" ${d.client === "Private" ? "" : "hidden"}>
           <div class="grid2">
             <label>Client phone<input id="f_private_phone" inputmode="tel" value="${esc(d.private_phone)}"></label>
@@ -493,7 +517,10 @@
     // Boxes grow to fit everything typed — no tiny scrolling inside them
     const grow = (el) => { el.style.height = "auto"; el.style.height = (el.scrollHeight + 4) + "px"; };
     back.querySelectorAll("textarea").forEach((t) => { grow(t); t.addEventListener("input", () => grow(t)); });
-    $f("client").onchange = () => { back.querySelector(".private-only").hidden = $f("client").value !== "Private"; };
+    $f("client").onchange = () => {
+      back.querySelector(".private-only").hidden = $f("client").value !== "Private";
+      document.getElementById("f_papers_line").hidden = !PAPER_CLIENTS.includes($f("client").value);
+    };
     $f("address").onblur = () => {
       const cleaned = window.JES_PARSE.cleanAddress($f("address").value);
       $f("address").value = cleaned;
@@ -506,6 +533,7 @@
       if (!d.county) d.county = countyFor(d.address);
       d.price = Number(String($f("price").value).replace(/[^0-9.]/g, "")) || 0;
       d.paid_upfront = $f("paid_upfront").checked;
+      d.has_papers = PAPER_CLIENTS.includes(d.client) ? $f("has_papers").checked : true;
       closeSheet(); saveLocal(); drawDrafts();
     };
     document.getElementById("shRemove").onclick = () => {
@@ -574,7 +602,8 @@
       client: d.client, job_no: d.job_no || null, person: d.person || null, address: d.address || null,
       county: d.county || null, service: d.service || "Standard", due_date: d.due_date || null,
       price: Number(d.price) || 0, notes: d.notes || null, raw_text: d.raw_text || null,
-      status: "Active", on_today: S.addToday && !problems(d).length,
+      status: "Active", has_papers: d.has_papers !== false,
+      on_today: S.addToday && !problems(d).length && d.has_papers !== false,
       private_phone: d.private_phone || null, private_email: d.private_email || null,
       paid_upfront: !!d.paid_upfront
     }));
