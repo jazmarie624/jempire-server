@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 7: payment mismatches — you choose; short-paid tracking)
+// J EMPIRE SERVER — office.js (version 8: tab badges refresh)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -96,7 +96,7 @@
     const body = byId("dBody");
     body.querySelectorAll("[data-chk]").forEach((c) => c.onchange = async () => {
       const j = findJ(c.dataset.id); j[c.dataset.chk] = c.checked;
-      await upd("jes_jobs", j.id, { [c.dataset.chk]: c.checked });
+      J().refreshBadges && J().refreshBadges(); await upd("jes_jobs", j.id, { [c.dataset.chk]: c.checked });
       if (checked(j)) { J().toast("All checked ✓ — moved to ready to bill"); drawDone(); }
     });
     body.querySelectorAll("[data-price]").forEach((inp) => inp.onchange = async () => {

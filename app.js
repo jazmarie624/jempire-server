@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 9: short-paid reminder)
+// J EMPIRE SERVER — app.js (version 10: iPhone-friendly tabs + red count badges)
 (function () {
   "use strict";
 
@@ -42,7 +42,7 @@
       global: { headers: { "x-jempire-key": store.get("jes_key", "") } },
       auth: { persistSession: false }
     });
-    window.JES = { db, esc, money, toast, go: (id) => go(id) };
+    window.JES = { db, esc, money, toast, go: (id, f) => go(id, f), refreshBadges: () => refreshBadges() };
   }
 
   // ---------- sections ----------
@@ -59,19 +59,37 @@
   // iPhone bottom bar keeps it short; steps 4–6 live under "Office"
   const PHONE_TABS = [
     { id: "home", label: "Home" },
-    { id: "add", label: "1 Add" },
-    { id: "jobs", label: "2 Jobs" },
-    { id: "route", label: "3 Route" },
-    { id: "office", label: "4–6 Office" }
+    { id: "add", label: "Add" },
+    { id: "jobs", label: "Jobs" },
+    { id: "route", label: "Route" },
+    { id: "office", label: "Office" }
   ];
+  // Red number badges: how many jobs are waiting at each step
+  let BADGE = {};
+  async function refreshBadges() {
+    if (!db) return;
+    const { data } = await db.from("jes_jobs").select("status,on_today,address,county,client,chk_client_app,chk_proof,chk_price,invoice_id,paid_upfront");
+    if (!data) return;
+    const done = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
+    const routable = (j) => j.address && j.county && /\b(?:FL|Florida)\b[\s,]*\d{5}/i.test(j.address);
+    const toCheck = data.filter((j) => done(j) && !(j.chk_client_app && j.chk_proof && j.chk_price)).length;
+    const toBill = data.filter((j) => done(j) && j.chk_client_app && j.chk_proof && j.chk_price && !j.invoice_id && !j.paid_upfront && j.client !== "ABC Legal").length;
+    BADGE = {
+      jobs: data.filter((j) => j.status === "Active" && !(j.on_today && routable(j))).length,
+      route: data.filter((j) => j.status === "Active" && j.on_today && routable(j)).length,
+      done: toCheck, invoices: toBill, office: toCheck + toBill
+    };
+    drawTabs();
+  }
   let current = "home";
 
   function drawTabs() {
+    const badge = (id) => BADGE[id] ? `<span class="badge" aria-label="${BADGE[id]} waiting">${BADGE[id] > 99 ? "99+" : BADGE[id]}</span>` : "";
     $(".tabs-top").innerHTML = TABS.map((t) =>
-      `<button class="tab" data-go="${t.id}" ${t.id === current ? 'aria-current="page"' : ""}>${esc(t.label)}</button>`).join("");
+      `<button class="tab" data-go="${t.id}" ${t.id === current ? 'aria-current="page"' : ""}>${esc(t.label)}${badge(t.id)}</button>`).join("");
     const phoneCur = ["done", "invoices", "money", "office"].includes(current) ? "office" : current;
     $(".tabs-bottom").innerHTML = PHONE_TABS.map((t) =>
-      `<button class="tab" data-go="${t.id}" ${t.id === phoneCur ? 'aria-current="page"' : ""}>${esc(t.label)}</button>`).join("");
+      `<button class="tab" data-go="${t.id}" ${t.id === phoneCur ? 'aria-current="page"' : ""}><span class="tab-in">${esc(t.label)}${badge(t.id)}</span></button>`).join("");
   }
 
   document.addEventListener("click", (e) => {
@@ -83,6 +101,7 @@
   function go(id, filter) {
     current = id;
     drawTabs();
+    refreshBadges();
     window.scrollTo(0, 0);
     const screens = {
       home: drawHome,

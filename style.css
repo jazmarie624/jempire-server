@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 15: Jobs History) */
+/* J EMPIRE SERVER — style.css (version 16: iPhone fit — no sideways scrolling, tab badges) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -528,6 +528,65 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 @media (min-width: 900px) {
   .job-cols.five { grid-template-columns: repeat(5, 1fr); gap: 0.6rem; }
   .job-cols.five .job-col { padding: 0.55rem; }
+}
+
+
+/* ================= Tab badges ================= */
+.badge {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.3rem; height: 1.3rem; padding: 0 0.3rem;
+  margin-left: 0.3rem; border-radius: 999px; background: var(--red); color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 1;
+}
+.tab[aria-current="page"] .badge { background: #fff; color: var(--red); }
+.tab-in { position: relative; display: inline-flex; align-items: center; }
+.tabs-bottom .badge { position: absolute; top: -0.75rem; right: -0.95rem; margin: 0; }
+
+/* ================= Never wider than the screen ================= */
+html, body { max-width: 100%; overflow-x: clip; }
+input, select, textarea, button { max-width: 100%; }
+.row-gap > *, .jc-btns > *, .draft-text, .rp-mid, .il-name, .pick-main { min-width: 0; }
+.grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.sheet input, .sheet select, .sheet textarea, .settings input { width: 100%; min-width: 0; }
+input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appearance: none; }
+.map, .leaflet-container { max-width: 100%; }
+.col-head { flex-wrap: wrap; }
+
+/* ================= iPhone layout ================= */
+@media (max-width: 899px) {
+  :root { font-size: calc(17px * var(--scale)); }
+  .topbar { padding: 0.45rem 0.7rem; gap: 0.4rem; }
+  .brand-mark { width: 2rem; height: 2rem; }
+  .brand-name { font-size: 1.1rem; white-space: nowrap; }
+  .size-btns { gap: 0.3rem; }
+  .size-btns button { width: 40px; height: 40px; font-size: 15px; }
+  .size-btns button:last-child { font-size: 18px; }
+  #screen { padding: 0.75rem 0.75rem 1rem; }
+  h1 { font-size: 1.6rem; }
+  .tabs-bottom .tab { min-height: 58px; font-size: 0.95rem; }
+
+  /* buttons and pills wrap onto a 2nd row instead of sliding sideways */
+  .chips { flex-wrap: wrap; overflow: visible; }
+  .chip { min-height: 42px; padding: 0 0.75rem; font-size: 0.88rem; }
+  .row-gap { flex-wrap: wrap; }
+  .intake .row-gap { flex-wrap: nowrap; }
+  .intake .row-gap .btn { padding: 0 0.8rem; flex-shrink: 0; }
+  .big-select { min-width: 0; }
+  .seg button { padding: 0 0.6rem; font-size: 0.85rem; }
+  .jobs-bar .seg { align-self: stretch; }
+  .jobs-bar .seg button { flex: 1; }
+  .route-head h1 { font-size: 1.45rem; }
+  .map { height: 34vh; min-height: 220px; }
+  .route-tools .btn { flex: 1; }
+  .stop-top { gap: 0.45rem; }
+  .ov-line { flex-wrap: wrap; }
+  .il-no { width: auto; }
+  .money-grid .tile-value { font-size: 1.6rem; }
+  .sheet { padding: 0.8rem 0.8rem calc(0.8rem + env(safe-area-inset-bottom, 0px)); }
+  .sheet-btns { flex-wrap: wrap; }
+  .sheet-btns .btn { flex: 1 1 40%; }
+  .home-logo { width: 7.5rem; height: 7.5rem; }
+}
+@media (max-width: 380px) {
+  .brand-name { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

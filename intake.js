@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 5: save without address + 'what do you want to do?' check)
+// J EMPIRE SERVER — intake.js (version 6: tab badges refresh after save)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -596,7 +596,7 @@
     await loadData();
     drawDrafts();
     const later = rows.filter((r) => !r.on_today && S.addToday).length;
-    J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${later ? ` · ${later} waiting for an address` : ""}`);
+    J().refreshBadges && J().refreshBadges(); J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${later ? ` · ${later} waiting for an address` : ""}`);
   }
 
   async function saveIgnore() {

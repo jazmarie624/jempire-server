@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 4: Working / History views)
+// J EMPIRE SERVER — jobs.js (version 5: iPhone-friendly column buttons)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -30,10 +30,10 @@
   // Four columns, left to right in the order a job moves:
   // Needs address → Ready to route → On today's route → On hold
   const COLS = [
-    { id: "fix",   title: "Needs address",    sub: "Add the address to route it", test: (j) => !isDone(j) && j.status !== "On Hold" && needsAddress(j) },
-    { id: "ready", title: "Ready to route",   sub: "Tap + Today to add",           test: (j) => j.status === "Active" && !needsAddress(j) && !j.on_today },
-    { id: "today", title: "On today's route", sub: "Shown on 3 Route",             test: (j) => j.status === "Active" && !needsAddress(j) && j.on_today },
-    { id: "hold",  title: "On hold",          sub: "Kept, not routed",             test: (j) => j.status === "On Hold" }
+    { id: "fix",   short: "Fix",   title: "Needs address",    sub: "Add the address to route it", test: (j) => !isDone(j) && j.status !== "On Hold" && needsAddress(j) },
+    { id: "ready", short: "Ready", title: "Ready to route",   sub: "Tap + Today to add",           test: (j) => j.status === "Active" && !needsAddress(j) && !j.on_today },
+    { id: "today", short: "Today", title: "On today's route", sub: "Shown on 3 Route",             test: (j) => j.status === "Active" && !needsAddress(j) && j.on_today },
+    { id: "hold",  short: "Hold",  title: "On hold",          sub: "Kept, not routed",             test: (j) => j.status === "On Hold" }
   ];
   const FILTER_TO_COL = { "Needs address": "fix", "Active": "ready", "Today": "today", "On Hold": "hold" };
   const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", q: "", jobs: [], invs: {} };
@@ -147,7 +147,7 @@
       body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(jobCard).join("") || ""}</div>`;
     } else {
       const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && c.test(j)).sort(sortJobs) }));
-      byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.title} (${jobs.length})</button>`).join("");
+      byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.short} <b>${jobs.length}</b></button>`).join("");
       body.innerHTML = `<div class="job-cols">${lists.map(({ c, jobs }) => `
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
           <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
@@ -160,7 +160,7 @@
     body.querySelectorAll("[data-today]").forEach((b) => b.onclick = async () => {
       const j = JS.jobs.find((x) => x.id === b.dataset.today);
       j.on_today = !j.on_today;
-      if (await updateJob(j.id, { on_today: j.on_today, route_order: null })) { drawList(); J().toast(j.on_today ? "Added to today" : "Removed from today"); }
+      J().refreshBadges && J().refreshBadges(); if (await updateJob(j.id, { on_today: j.on_today, route_order: null })) { drawList(); J().toast(j.on_today ? "Added to today" : "Removed from today"); }
     });
   }
 
@@ -509,7 +509,7 @@
     RS.stops = RS.stops.filter((x) => x.id !== j.id);
     await saveOrder();
     drawStops(); drawMap(); drawAddMore();
-    J().toast(kind === "Served" ? "Served ✓ — next stop" : kind === "Attempt" ? "Attempt logged — next stop" : "Non-served — next stop");
+    J().refreshBadges && J().refreshBadges(); J().toast(kind === "Served" ? "Served ✓ — next stop" : kind === "Attempt" ? "Attempt logged — next stop" : "Non-served — next stop");
   }
 
   function drawAddMore() {
