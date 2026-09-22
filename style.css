@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 14: who's right + short paid) */
+/* J EMPIRE SERVER — style.css (version 15: Jobs History) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -510,5 +510,24 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 .rp-row.diff .rp-note { color: var(--red); font-weight: 600; }
 .rp-row .price-in input { width: 5.5rem; }
 .col-head .row-gap { gap: 0.35rem; }
+
+
+/* ================= Jobs · History ================= */
+.view-seg button { min-width: 6rem; }
+.hcard { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.5rem 0.6rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.hc-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.hc-right { font-size: 0.82rem; color: var(--navy-2); }
+.mstat { font-size: 0.75rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 6px; border: 1px solid; white-space: nowrap; }
+.st-paid { background: var(--green); border-color: var(--green); color: #fff; }
+.st-pending { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+.st-unbilled { background: var(--red); border-color: var(--red); color: #fff; }
+.st-hold { border-color: var(--gold); color: var(--gold-text); }
+.st-active { border-color: var(--navy-2); color: var(--navy-2); }
+.month-head { font-size: 0.78rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gold-text); border-bottom: 1px solid var(--gold); padding: 0.4rem 0 0.15rem; }
+.hist-col { border-top: 4px solid var(--navy); }
+@media (min-width: 900px) {
+  .job-cols.five { grid-template-columns: repeat(5, 1fr); gap: 0.6rem; }
+  .job-cols.five .job-col { padding: 0.55rem; }
+}
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

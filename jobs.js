@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 3: Jobs tab in columns)
+// J EMPIRE SERVER — jobs.js (version 4: Working / History views)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -36,7 +36,7 @@
     { id: "hold",  title: "On hold",          sub: "Kept, not routed",             test: (j) => j.status === "On Hold" }
   ];
   const FILTER_TO_COL = { "Needs address": "fix", "Active": "ready", "Today": "today", "On Hold": "hold" };
-  const JS = { col: "ready", county: "All", q: "", jobs: [] };
+  const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", q: "", jobs: [], invs: {} };
 
   async function drawJobs(opts) {
     if (opts && opts.filter && FILTER_TO_COL[opts.filter]) JS.col = FILTER_TO_COL[opts.filter];
@@ -45,6 +45,7 @@
       <section class="jobs">
         <div class="jobs-bar">
           <h1>Jobs</h1>
+          <div class="seg view-seg" id="jView">${[["working", "Working"], ["history", "History"]].map(([v, t]) => `<button class="${v === JS.view ? "on" : ""}" data-v="${v}">${t}</button>`).join("")}</div>
           <label class="sr" for="jq">Search jobs</label>
           <input id="jq" class="search" type="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
           <div class="seg" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="${c === JS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
@@ -55,7 +56,10 @@
       <div class="sheet-back" id="sheetBack" hidden></div>`;
     byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
     byId("jq").oninput = (e) => { JS.q = e.target.value; drawList(); };
+    byId("jView").onclick = (e) => { const b = e.target.closest("[data-v]"); if (b) { JS.view = b.dataset.v; drawJobs(); } };
     JS.jobs = await fetchJobs();
+    const { data: invs } = await J().db.from("jes_invoices").select("id,grp,status,paid_on,period_start,period_end");
+    JS.invs = {}; (invs || []).forEach((i) => { JS.invs[i.id] = i; });
     drawList();
   }
 
@@ -82,6 +86,50 @@
       </div>`;
   }
 
+  // ---------- HISTORY: one column per client, newest first, month headings ----------
+  const H_CLIENTS = ["ProVest", "Userve", "Ody's", "ABC Legal", "Private"];
+  function moneyStatus(j) {
+    const inv = j.invoice_id && JS.invs[j.invoice_id];
+    if (inv && inv.status === "Paid") return { cls: "st-paid", t: "Paid ✓" + (inv.paid_on ? " " + fmtDate(inv.paid_on).slice(0, 5) : "") };
+    if (inv) return { cls: "st-pending", t: "Billed · pending" };
+    if (j.paid_upfront) return { cls: "st-paid", t: "Paid upfront" };
+    if (isDone(j) && j.client === "ABC Legal") return { cls: "st-paid", t: "Done · ABC pays in app" };
+    if (isDone(j)) return { cls: "st-unbilled", t: "Done · NOT billed" };
+    if (j.status === "On Hold") return { cls: "st-hold", t: "On hold" };
+    return { cls: "st-active", t: `Active · attempt ${j.attempt_count || 0}/5` };
+  }
+  function histCard(j) {
+    const { esc, money } = J();
+    const m = moneyStatus(j);
+    const d = j.done_at || j.created_at;
+    return `<div class="hcard">
+      <div class="jc-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+      <div class="jc-addr">${esc(j.address || "No address on file")}</div>
+      <div class="hc-foot"><span class="mstat ${m.cls}">${esc(m.t)}</span><span class="hc-right">${esc(d ? fmtDate(d).slice(0, 5) : "")} · <b>${money(j.price)}</b></span></div>
+      <div class="jc-btns"><button class="btn ghost thin" data-open="${j.id}">Open</button></div>
+    </div>`;
+  }
+  function drawHistory(q, byCounty) {
+    const { esc, money } = J();
+    const match = (j) => !q || [j.person, j.job_no, j.address, j.client, j.notes].join(" ").toLowerCase().includes(q);
+    const cols = H_CLIENTS.map((c) => {
+      const jobs = JS.jobs.filter((j) => j.client === c && byCounty(j) && match(j))
+        .sort((a, b) => new Date(b.done_at || b.created_at) - new Date(a.done_at || a.created_at));
+      return { c, jobs };
+    });
+    byId("jColPick").innerHTML = cols.map(({ c, jobs }) => `<button class="chip ${c === JS.hcol ? "on" : ""}" data-hcol="${esc(c)}">${esc(c === "ABC Legal" ? "ABC" : c)} (${jobs.length})</button>`).join("");
+    byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-hcol]"); if (b) { JS.hcol = b.dataset.hcol; drawList(); } };
+    const monthOf = (j) => new Date(j.done_at || j.created_at).toLocaleDateString([], { month: "long", year: "numeric" });
+    byId("jBody").innerHTML = `${q ? `<p class="muted small">Showing matches for “${esc(JS.q)}”.</p>` : ""}<div class="job-cols five">${cols.map(({ c, jobs }) => {
+      let last = "";
+      const total = jobs.reduce((a, j) => a + Number(j.price || 0), 0);
+      return `<div class="job-col hist-col ${c === JS.hcol ? "phone-on" : ""}">
+        <div class="col-head"><div><h2>${esc(c === "ABC Legal" ? "ABC" : c)}</h2><div class="col-sub">${jobs.length} job${jobs.length === 1 ? "" : "s"} · ${money(total)}</div></div></div>
+        <div class="col-list">${jobs.length ? jobs.map((j) => { const m = monthOf(j); const head = m !== last ? `<div class="month-head">${esc(m)}</div>` : ""; last = m; return head + histCard(j); }).join("") : `<p class="muted small center">No jobs.</p>`}</div>
+      </div>`;
+    }).join("")}</div>`;
+  }
+
   function drawList() {
     const { esc } = J();
     const q = JS.q.toLowerCase().trim();
@@ -90,8 +138,10 @@
     const sortJobs = (a, b) => (b.service === "Rush") - (a.service === "Rush") || dueRank(a) - dueRank(b);
     const body = byId("jBody");
 
-    // Searching shows one list across everything, including finished jobs
-    if (q) {
+    if (JS.view === "history") {
+      drawHistory(q, byCounty);
+    } else if (q) {
+      // Searching in Working shows one list across everything, including finished jobs
       byId("jColPick").innerHTML = "";
       const hits = JS.jobs.filter((j) => byCounty(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
       body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(jobCard).join("") || ""}</div>`;
@@ -103,7 +153,7 @@
           <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
           <div class="col-list">${jobs.length ? jobs.map(jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
         </div>`).join("")}</div>
-        <p class="muted small center">Finished jobs live in <b>4 Done</b>, or search for them above.</p>`;
+        <p class="muted small center">Finished and paid jobs are in <b>History</b> (switch at the top).</p>`;
       byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { JS.col = b.dataset.col; drawList(); } };
     }
     body.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs));
