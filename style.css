@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 12: columns everywhere, job finder, money breakdowns) */
+/* J EMPIRE SERVER — style.css (version 14: who's right + short paid) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -489,5 +489,26 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   .pick-cols { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
   .pick-col .pick-list { max-height: 50vh; overflow-y: auto; }
 }
+
+
+/* ================= Record a payment ================= */
+.rp-sum { font-size: 1.05rem; padding: 0.5rem 0.7rem; border-radius: 10px; }
+.rp-sum.ok { background: var(--green-bg); color: var(--green); border: 2px solid var(--green); }
+.rp-sum.bad { background: var(--red-bg); color: var(--red); border: 2px solid var(--red); }
+.rp-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.rp-row { display: flex; flex-direction: column; gap: 0.35rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0.35rem 0.55rem; }
+.rp-top { display: flex; align-items: center; gap: 0.5rem; }
+.rp-row.more { border-left: 5px solid var(--navy); }
+.rp-choice { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.pick.danger-on { background: var(--red); border-color: var(--red); color: #fff; }
+.short-box { background: var(--red-bg); border: 2px solid var(--red); border-radius: 14px; padding: 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.rp-row.new { border-left: 5px solid var(--gold); }
+.rp-row.diff { border-left: 5px solid var(--red); }
+.rp-row.ok { border-left: 5px solid var(--green); }
+.rp-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rp-note { font-size: 0.8rem; color: var(--navy-2); }
+.rp-row.diff .rp-note { color: var(--red); font-weight: 600; }
+.rp-row .price-in input { width: 5.5rem; }
+.col-head .row-gap { gap: 0.35rem; }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

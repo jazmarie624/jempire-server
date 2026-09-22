@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 5: Done in columns, invoice job finder, ProVest|Userve picker, Money breakdowns)
+// J EMPIRE SERVER — office.js (version 7: payment mismatches — you choose; short-paid tracking)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -142,7 +142,7 @@
       <div class="inv-col ${g === phoneCol ? "phone-on" : ""}">
         <div class="col-head">
           <div><h2>${esc(g)}</h2><div class="col-sub">${g === "Jean" ? "ProVest + Userve" : g === "Ody's" ? "Ody's jobs" : "Private serves"}</div></div>
-          <button class="btn thin" data-new="${esc(g)}">+ New</button>
+          <span class="row-gap"><button class="btn ghost thin" data-paygrp="${esc(g)}">$ Payment</button><button class="btn thin" data-new="${esc(g)}">+ New</button></span>
         </div>
         <div class="col-totals"><span class="bad">Owed ${money(owed)}</span><span class="ok">Paid ${money(paid)}</span></div>
         <div class="col-list">${list.length ? list.map((i) => `
@@ -153,7 +153,14 @@
       </div>`;
     };
 
+    const shorts = D.jobs.filter((j) => Number(j.short_paid || 0) > 0);
     byId("screen").querySelector(".office").innerHTML = `
+      ${shorts.length ? `<div class="short-box"><div class="bd-title">${shorts.length} job${shorts.length > 1 ? "s were" : " was"} short paid — ${money(shorts.reduce((a, j) => a + Number(j.short_paid), 0))} to follow up on</div>
+        ${shorts.map((j) => `<div class="find-line">
+          <div class="draft-text"><div class="jc-name">#${esc(j.job_no || "")} ${esc(j.person || "")} · ${esc(j.client || "")}</div>
+            <div class="find-where bad">Owed ${money(j.short_paid)} more (your price ${money(j.price)})</div></div>
+          <div class="jc-btns"><button class="btn go thin" data-shortpaid="${j.id}">They paid it ✓</button><button class="btn ghost thin" data-shortaccept="${j.id}">Accept their amount</button></div>
+        </div>`).join("")}</div>` : ""}
       <div class="jobs-bar"><h1>Invoices</h1>
         <label class="sr" for="invFind">Find a job</label>
         <input id="invFind" class="search" type="search" placeholder="Find a job # or name — where is it?"></div>
@@ -165,8 +172,20 @@
 
     const scr = byId("screen");
     byId("invFind").oninput = (e) => findJob(e.target.value, D);
+    scr.querySelectorAll("[data-shortpaid]").forEach((b) => b.onclick = async () => {
+      const j = D.jobs.find((x) => x.id === b.dataset.shortpaid);
+      const note = `${j.notes ? j.notes + "\n" : ""}Short payment of ${money(j.short_paid)} received ${mdy(new Date())}.`;
+      if (await upd("jes_jobs", j.id, { short_paid: 0, chk_price: true, notes: note })) { J().toast("Marked paid in full ✓"); drawInvoices(); }
+    });
+    scr.querySelectorAll("[data-shortaccept]").forEach((b) => b.onclick = async () => {
+      const j = D.jobs.find((x) => x.id === b.dataset.shortaccept);
+      if (!confirm(`Lower this job's price to ${money(Number(j.price) - Number(j.short_paid))} and stop tracking the ${money(j.short_paid)}?`)) return;
+      const note = `${j.notes ? j.notes + "\n" : ""}Accepted short payment — price lowered by ${money(j.short_paid)} on ${mdy(new Date())}.`;
+      if (await upd("jes_jobs", j.id, { price: Number(j.price) - Number(j.short_paid), short_paid: 0, chk_price: true, notes: note })) { J().toast("Price updated"); drawInvoices(); }
+    });
     byId("colPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { phoneCol = b.dataset.col; drawInvoices(); } };
     scr.querySelectorAll("[data-new]").forEach((b) => b.onclick = () => newInvoice(D, b.dataset.new));
+    scr.querySelectorAll("[data-paygrp]").forEach((b) => b.onclick = () => recordPayment(D, b.dataset.paygrp));
     if (byId("mNotBilled")) byId("mNotBilled").onclick = () => newInvoice(D, phoneCol);
     scr.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openInvoice(D.invoices.find((i) => i.id === b.dataset.open), D));
   }
@@ -200,6 +219,168 @@
     }).join("") : `<p class="muted">No job matches “${esc(q)}”.</p>`}</div>`;
     out.querySelectorAll("[data-findinv]").forEach((b) => b.onclick = () => openInvoice(invById[b.dataset.findinv], D));
     out.querySelectorAll("[data-findjob]").forEach((b) => b.onclick = () => window.JES_JOBS.openJob(D.jobs.find((j) => j.id === b.dataset.findjob), drawInvoices));
+  }
+
+  // ---------- RECORD A PAYMENT: paste a pay report (job # + amount), match, cross-check ----------
+  function parsePayReport(text) {
+    const money2 = (x) => Number(String(x).replace(/[$,\s]/g, "")) || 0;
+    const rows = [];
+    // 1) lines that have both a job # and an amount
+    text.split(/\r?\n/).forEach((ln) => {
+      const job = ln.match(/\b(\d{6,})\b/);
+      const amt = ln.match(/\$?\s?(\d{1,3}(?:,\d{3})*\.\d{2})\b/g);
+      if (job && amt) rows.push({ job_no: job[1], amount: money2(amt[amt.length - 1]) });
+    });
+    if (rows.length) return { rows, reportTotal: null };
+    // 2) otherwise pair them up in order (numbers first, amounts after)
+    const jobs = (text.match(/\b\d{6,}\b/g) || []);
+    let amts = (text.match(/\$\s?\d{1,3}(?:,\d{3})*\.\d{2}/g) || []).map(money2).filter((a) => a > 0);
+    let reportTotal = null;
+    if (amts.length > jobs.length) {
+      const max = Math.max(...amts);
+      const rest = amts.reduce((a, b) => a + b, 0) - max;
+      if (Math.abs(rest - max) < 0.01) { reportTotal = max; amts.splice(amts.indexOf(max), 1); }
+    }
+    if (jobs.length !== amts.length) return { rows: [], error: `Found ${jobs.length} job numbers but ${amts.length} amounts. Put each job # and its amount on the same line, like: 2026013609 75.70` };
+    return { rows: jobs.map((j, i) => ({ job_no: j, amount: amts[i] })), reportTotal };
+  }
+
+  function recordPayment(D, grp) {
+    const { esc, money } = J();
+    const back = byId("sheetBack");
+    const g = GROUPS[grp] ? grp : "Ody's";
+    const st = { paidOn: isoDay(new Date()), ref: "", text: "", rows: [], err: "", reportTotal: null };
+    const jobsByNo = {};
+    D.jobs.filter((j) => GROUPS[g].clients.includes(j.client) && j.job_no).forEach((j) => { jobsByNo[j.job_no] = j; });
+    const invById = {}; D.invoices.forEach((i) => { invById[i.id] = i; });
+
+    const isShortRow = (r) => { const j = jobsByNo[r.job_no]; return j && r.amount < Number(j.price || 0) - 0.005; };
+    const undecided = () => st.rows.filter((r) => isShortRow(r) && !r.dec).length;
+    const draw = () => {
+      const sum = st.rows.reduce((a, r) => a + Number(r.amount || 0), 0);
+      const paidNos = new Set(st.rows.map((r) => r.job_no));
+      // jobs you billed (pending) that this payment did NOT cover → possible limbo
+      const unpaid = st.rows.length ? D.jobs.filter((j) => GROUPS[g].clients.includes(j.client) && j.invoice_id &&
+        invById[j.invoice_id] && invById[j.invoice_id].status !== "Paid" && !paidNos.has(j.job_no)) : [];
+      back.hidden = false;
+      back.innerHTML = `
+        <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="rpTitle">
+          <h2 id="rpTitle">Record a payment — ${esc(g)}</h2>
+          <p class="muted small">Paste the job numbers and amounts from the pay report. One job per line works best, like <b>2026013609 75.70</b>.</p>
+          <div class="grid2">
+            <label>Paid on<input type="date" id="rpDate" value="${esc(st.paidOn)}"></label>
+            <label>Check # / reference<input id="rpRef" value="${esc(st.ref)}" placeholder="adp 9.21.26"></label>
+          </div>
+          <label class="sr" for="rpText">Pay report</label>
+          <textarea id="rpText" class="paste" placeholder="2026013609 75.70&#10;2026013482 55.50&#10;…">${esc(st.text)}</textarea>
+          <button class="btn" id="rpRead">Read it</button>
+          ${st.err ? `<div class="alert">${esc(st.err)}</div>` : ""}
+          ${st.rows.length ? `
+            <div class="rp-sum ${st.reportTotal == null || Math.abs(st.reportTotal - sum) < 0.01 ? "ok" : "bad"}">
+              <b>${st.rows.length} jobs · ${money(sum)}</b>${st.reportTotal != null ? (Math.abs(st.reportTotal - sum) < 0.01 ? " · matches the report total ✓" : ` · report says ${money(st.reportTotal)} ✗`) : ""}
+            </div>
+            <div class="rp-list">${st.rows.map((r, k) => {
+              const j = jobsByNo[r.job_no];
+              const inv = j && j.invoice_id && invById[j.invoice_id];
+              let note, cls, choice = "";
+              const mine = j ? Number(j.price || 0) : 0;
+              if (!j) { note = "Not in your app yet — will be added as a finished, paid job"; cls = "new"; }
+              else if (r.amount < mine - 0.005) {
+                cls = "diff";
+                note = `Paid ${money(r.amount)} — your app says ${money(mine)} (${money(mine - r.amount)} less). Who's right?`;
+                choice = `<div class="rp-choice">
+                  <button class="pick ${r.dec === "theirs" ? "on" : ""}" data-dec="${k}" data-v="theirs">They're right — use ${money(r.amount)}</button>
+                  <button class="pick ${r.dec === "short" ? "on danger-on" : ""}" data-dec="${k}" data-v="short">I'm owed ${money(mine - r.amount)} more — flag it</button>
+                </div>`;
+              }
+              else if (r.amount > mine + 0.005) { note = `Paid ${money(r.amount)} — more than your ${money(mine)} (extra charges?). Your price will be updated.`; cls = "more"; }
+              else { note = "Matches your app ✓"; cls = "ok"; }
+              if (inv) note += ` · on your ${inv.grp} invoice ${md(fromIso(inv.period_start))}–${md(fromIso(inv.period_end))}`;
+              return `<div class="rp-row ${cls}">
+                <div class="rp-top">
+                  <span class="il-no">#${esc(r.job_no)}</span>
+                  <span class="rp-mid"><span class="jc-name">${esc(j ? (j.person || "(no name)") : "New job")}</span><span class="rp-note">${esc(note)}</span></span>
+                  <label class="price-in">$<input inputmode="decimal" data-amt="${k}" value="${Number(r.amount).toFixed(2)}" aria-label="Amount paid for ${esc(r.job_no)}"></label>
+                </div>${choice}
+              </div>`;
+            }).join("")}</div>
+            ${unpaid.length ? `<div class="alert"><b>${unpaid.length} job${unpaid.length > 1 ? "s you billed are" : " you billed is"} NOT in this payment:</b> ${unpaid.map((j) => "#" + esc(j.job_no) + " " + esc(j.person || "")).join(", ")}. They stay pending so you can follow up.</div>` : ""}
+          ` : ""}
+          ${undecided() ? `<div class="alert">Choose who's right on ${undecided()} red job${undecided() > 1 ? "s" : ""} before saving.</div>` : ""}
+          <div class="sheet-btns">
+            <button class="btn ghost" id="rpCancel">Cancel</button>
+            <button class="btn go" id="rpSave" ${st.rows.length && !undecided() ? "" : "disabled"}>Save payment</button>
+          </div>
+        </div>`;
+      byId("rpDate").onchange = (e) => { st.paidOn = e.target.value; };
+      byId("rpRef").oninput = (e) => { st.ref = e.target.value; };
+      byId("rpText").oninput = (e) => { st.text = e.target.value; };
+      byId("rpRead").onclick = () => {
+        const r = parsePayReport(st.text);
+        st.rows = r.rows; st.err = r.error || (r.rows.length ? "" : "Couldn't find any job numbers with amounts."); st.reportTotal = r.reportTotal;
+        draw();
+      };
+      back.querySelectorAll("[data-amt]").forEach((i) => i.onchange = () => { const r = st.rows[i.dataset.amt]; r.amount = Number(String(i.value).replace(/[^0-9.]/g, "")) || 0; r.dec = null; draw(); });
+      back.querySelectorAll("[data-dec]").forEach((b) => b.onclick = () => { st.rows[b.dataset.dec].dec = b.dataset.v; draw(); });
+      byId("rpCancel").onclick = () => { back.hidden = true; back.innerHTML = ""; };
+      byId("rpSave").onclick = save;
+    };
+
+    async function save() {
+      const btn = byId("rpSave"); btn.disabled = true; btn.textContent = "Saving…";
+      const db = J().db;
+      const client = GROUPS[g].clients[0];
+      const paidAt = new Date(fromIso(st.paidOn || isoDay(new Date())).getTime() + 12 * 3600e3).toISOString();
+      // 1) add jobs that aren't in the app yet
+      const missing = st.rows.filter((r) => !jobsByNo[r.job_no]);
+      if (missing.length) {
+        const { data, error } = await db.from("jes_jobs").insert(missing.map((r) => ({
+          client, job_no: r.job_no, person: null, status: "Served", done_at: paidAt, price: r.amount,
+          notes: `Added from ${g} payment ${st.ref || ""} (${mdy(fromIso(st.paidOn))}). Add name/address if you want them on file.`,
+          chk_client_app: true, chk_proof: true, chk_price: true, on_today: false
+        }))).select();
+        if (error) { J().toast("Not saved: " + error.message); btn.disabled = false; btn.textContent = "Save payment"; return; }
+        data.forEach((j) => { jobsByNo[j.job_no] = j; });
+      }
+      // 2) prices: "they're right" or paid more → use their amount; "I'm owed more" → keep yours and flag the gap
+      await Promise.all(st.rows.map((r) => {
+        const j = jobsByNo[r.job_no];
+        const mine = Number(j.price || 0);
+        if (r.dec === "short") {
+          const gap = Math.round((mine - r.amount) * 100) / 100;
+          const note = `${j.notes ? j.notes + "\n" : ""}Short paid ${money(gap)} on ${mdy(fromIso(st.paidOn))}${st.ref ? " (" + st.ref + ")" : ""} — paid ${money(r.amount)} of ${money(mine)}.`;
+          return db.from("jes_jobs").update({ short_paid: gap, notes: note, chk_price: false }).eq("id", j.id);
+        }
+        return Math.abs(mine - r.amount) >= 0.01 ? db.from("jes_jobs").update({ price: r.amount, chk_price: true }).eq("id", j.id) : null;
+      }));
+      // 3) invoices fully covered by this payment → Paid
+      const paidNos = new Set(st.rows.map((r) => r.job_no));
+      const touched = new Set(st.rows.map((r) => jobsByNo[r.job_no].invoice_id).filter(Boolean));
+      const covered = [...touched].filter((id) => invById[id] && jobLines(invById[id]).every((l) => paidNos.has(l.job_no)));
+      await Promise.all(covered.map((id) => {
+        const inv = invById[id];
+        const lines = inv.lines.map((l) => { const r = st.rows.find((x) => x.job_no === l.job_no); return r && !l.extra ? { ...l, price: r.amount } : l; });
+        return db.from("jes_invoices").update({ status: "Paid", paid_on: st.paidOn, lines, total: lines.reduce((a, l) => a + Number(l.price || 0), 0) }).eq("id", id);
+      }));
+      // 4) everything else in this payment goes on one Paid record
+      const loose = st.rows.filter((r) => { const id = jobsByNo[r.job_no].invoice_id; return !id || !covered.includes(id); })
+        .filter((r) => !jobsByNo[r.job_no].invoice_id);
+      if (loose.length) {
+        let n = 0;
+        const lines = loose.map((r) => ({ n: ++n, section: client, job_id: jobsByNo[r.job_no].id, job_no: r.job_no, name: jobsByNo[r.job_no].person || "", address: jobsByNo[r.job_no].address || "", price: r.amount }));
+        const dates = loose.map((r) => new Date(jobsByNo[r.job_no].done_at || paidAt)).sort((a, b) => a - b);
+        const { data: inv, error } = await db.from("jes_invoices").insert({
+          grp: g, bill_to: `${GROUPS[g].billTo || g}${st.ref ? " — " + st.ref : ""}`,
+          period_start: isoDay(dates[0]), period_end: isoDay(dates[dates.length - 1]),
+          lines, total: lines.reduce((a, l) => a + l.price, 0), status: "Paid", paid_on: st.paidOn
+        }).select().single();
+        if (!error) await db.from("jes_jobs").update({ invoice_id: inv.id }).in("id", lines.map((l) => l.job_id));
+      }
+      back.hidden = true; back.innerHTML = "";
+      J().toast(`Payment saved · ${st.rows.length} jobs marked paid`);
+      drawInvoices();
+    }
+    draw();
   }
 
   // ---------- open a saved invoice: see jobs, edit prices, add charges, mark paid ----------
@@ -325,7 +506,9 @@
     const expWeek = D.expenses.filter((e) => inWeek(fromIso(e.day)));
     const costs = expWeek.reduce((s, e) => s + Number(e.amount || 0), 0);
     const milesWeek = expWeek.reduce((s, e) => s + Number(e.miles || 0), 0);
-    const owed = D.invoices.filter((i) => i.status === "Pending").reduce((s, i) => s + Number(i.total || 0), 0);
+    const shortJobs = D.jobs.filter((j) => Number(j.short_paid || 0) > 0);
+    const shortSum = shortJobs.reduce((s, j) => s + Number(j.short_paid), 0);
+    const owed = D.invoices.filter((i) => i.status === "Pending").reduce((s, i) => s + Number(i.total || 0), 0) + shortSum;
     const paidWeek = D.invoices.filter((i) => i.status === "Paid" && i.paid_on && inWeek(fromIso(i.paid_on))).reduce((s, i) => s + Number(i.total || 0), 0)
       + D.jobs.filter((j) => j.paid_upfront && inWeek(j.done_at)).reduce((s, j) => s + Number(j.price || 0), 0);
     const attempting = D.jobs.filter((j) => j.status === "Active" && (j.attempt_count || 0) > 0).length;
@@ -338,7 +521,7 @@
           <div class="bar"><span style="width:${Math.min(100, goal ? earned / goal * 100 : 0)}%"></span></div></button>
         <button class="tile" data-bd="costs"><div class="tile-label">Gas, tolls &amp; costs ›</div><div class="tile-value">${money(costs)}</div><div class="tile-sub">${milesWeek ? milesWeek.toFixed(0) + " miles logged" : "Nothing logged yet"}</div></button>
         <button class="tile green" data-bd="profit"><div class="tile-label">Real profit ›</div><div class="tile-value">${money(earned - costs)}</div><div class="tile-sub">Earned minus costs</div></button>
-        <button class="tile red" data-bd="owed"><div class="tile-label">Owed to you ›</div><div class="tile-value">${money(owed)}</div><div class="tile-sub">Pending invoices</div></button>
+        <button class="tile red" data-bd="owed"><div class="tile-label">Owed to you ›</div><div class="tile-value">${money(owed)}</div><div class="tile-sub">Pending invoices${shortSum ? " + short pays" : ""}</div></button>
         <button class="tile green" data-bd="paid"><div class="tile-label">Paid this week ›</div><div class="tile-value">${money(paidWeek)}</div><div class="tile-sub">Money received</div></button>
         <button class="tile" data-bd="attempting"><div class="tile-label">Still attempting ›</div><div class="tile-value">${attempting}</div><div class="tile-sub">Not counted as money yet</div></button>
       </div>
@@ -371,8 +554,9 @@
         expWeek.map((e) => line(`${esc(mdy(fromIso(e.day)))} · ${esc(e.kind)}${e.miles ? " · " + esc(e.miles) + " mi" : ""}${e.note ? " · " + esc(e.note) : ""}`, money(e.amount))).join("") || "<p class='muted'>Nothing logged this week.</p>", money(costs)],
       profit: () => ["Real profit = earned minus costs",
         line("Earned this week", money(earned)) + line("minus gas, tolls &amp; costs", "− " + money(costs)), money(earned - costs)],
-      owed: () => ["Owed to you = every invoice not marked paid yet",
-        D.invoices.filter((i) => i.status === "Pending").map((i) => line(esc(invLabel(i)) + ` · ${(i.lines || []).filter((l) => !l.extra).length} jobs`, money(i.total))).join("") || "<p class='muted'>Nothing owed. ✓</p>", money(owed)],
+      owed: () => ["Owed to you = every invoice not marked paid yet + jobs that were short paid",
+        (D.invoices.filter((i) => i.status === "Pending").map((i) => line(esc(invLabel(i)) + ` · ${(i.lines || []).filter((l) => !l.extra).length} jobs`, money(i.total))).join("") +
+         shortJobs.map((j) => line(`Short paid · #${esc(j.job_no || "")} ${esc(j.person || "")} · ${esc(j.client || "")}`, money(j.short_paid))).join("")) || "<p class='muted'>Nothing owed. ✓</p>", money(owed)],
       paid: () => ["Paid this week = invoices marked paid this week + private jobs paid upfront",
         D.invoices.filter((i) => i.status === "Paid" && i.paid_on && inWeek(fromIso(i.paid_on))).map((i) => line(`${esc(invLabel(i))} · paid ${esc(md(fromIso(i.paid_on)))}`, money(i.total))).join("") +
         D.jobs.filter((j) => j.paid_upfront && inWeek(j.done_at)).map((j) => line(jobLeft(j) + " · paid upfront", money(j.price))).join("") || "<p class='muted'>Nothing paid yet this week.</p>", money(paidWeek)],

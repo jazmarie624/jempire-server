@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 8: tabs in work order, Invoices + Money split)
+// J EMPIRE SERVER — app.js (version 9: short-paid reminder)
 (function () {
   "use strict";
 
@@ -156,7 +156,7 @@
   async function loadGlance() {
     const tiles = document.querySelectorAll("#glance .tile-value");
     const [jobsRes, invRes, goalRes] = await Promise.all([
-      db.from("jes_jobs").select("id,client,address,county,status,price,done_at,invoice_id,paid_upfront,on_today,attempt_count,created_at"),
+      db.from("jes_jobs").select("*"),
       db.from("jes_invoices").select("total,status"),
       db.from("jes_settings").select("value").eq("key", "weekly_goal").maybeSingle()
     ]);
@@ -190,6 +190,9 @@
     const idle = jobs.filter((j) => j.status === "Active" && !needsFixing(j) && !j.on_today &&
       (j.attempt_count || 0) === 0 && j.created_at && new Date(j.created_at).getTime() < threeDays);
     if (idle.length) alerts.push(`${idle.length} job${idle.length > 1 ? "s have" : " has"} been sitting 3+ days with no attempt and no route. Add to a route or put on hold?`);
+
+    const shortPaid = jobs.filter((j) => Number(j.short_paid || 0) > 0);
+    if (shortPaid.length) alerts.push(`${shortPaid.length} job${shortPaid.length > 1 ? "s were" : " was"} short paid — ${money(shortPaid.reduce((s, j) => s + Number(j.short_paid), 0))} still owed to you (invoice follow-up).`);
 
     const weekAgo = Date.now() - 7 * 864e5;
     const forgot = jobs.filter((j) =>
