@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 9: tidy toggle list in the job sheet)
+// J EMPIRE SERVER — jobs.js (version 10: Route confirmation + undo, pins fanned out)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -83,7 +83,7 @@
     return `
       <div class="jcard ${cls}">
         <div class="jc-top">
-          <span class="tap-field name" contenteditable data-jf="person" data-id="${j.id}" data-ph="tap to add name">${esc(j.person || "")}</span>
+          <span class="tap-field name" contenteditable data-jf="person" data-id="${j.id}" data-ph="${esc(j.address ? j.address.split(",")[0] : "tap to add name")}">${esc(j.person || "")}</span>
           <span class="tap-field jobno" contenteditable data-jf="job_no" data-id="${j.id}" data-ph="job #">${esc(j.job_no || "")}</span>
         </div>
         <div class="jc-addr">${red ? `<b>${esc(P().problems(j).join(" · "))}</b>${j.address ? " · " : ""}` : ""}${esc(j.address || "")}</div>
@@ -484,6 +484,7 @@
         </div>
         ${RS.started ? `<div class="route-live">● Route in progress — stops re-sort from where you are after each one</div>` : ""}
         <div id="rNear" class="near-wrap"></div>
+        <div id="rDid"></div>
         <div class="route-grid">
           <div class="route-mapcol">
             <div id="rMap" class="map" role="img" aria-label="Map of today's stops"></div>
@@ -547,6 +548,8 @@
     const otherCounty = today.filter((j) => j.county && j.county !== RS.county).length;
 
     const msgs = [];
+    const noPin = RS.stops.filter((j) => j.lat == null).length;
+    if (noPin) msgs.push(`${noPin} stop${noPin > 1 ? "s have" : " has"} no map pin — open it and check the address.`);
     if (noAddr.length) msgs.push(`${noAddr.length} of today's jobs in ${RS.county} ${noAddr.length > 1 ? "are" : "is"} missing an address — fix in Jobs → Needs address.`);
     if (waitingToday) msgs.push(`${waitingToday} job${waitingToday > 1 ? "s are" : " is"} still waiting on papers from Jean, so ${waitingToday > 1 ? "they're" : "it's"} left off the route.`);
     if (otherCounty) msgs.push(`${otherCounty} of today's jobs ${otherCounty > 1 ? "are" : "is"} in the other county and not shown here.`);
@@ -577,14 +580,18 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
     const pts = [];
+    const seen = {};
     RS.stops.forEach((j, i) => {
       if (j.lat == null) return;
+      const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
+      const n = (seen[key] = (seen[key] || 0) + 1);
+      if (n > 1) { const a = (n - 1) * 1.1; j = Object.assign({}, j, { lat: j.lat + 0.00035 * Math.cos(a), lng: j.lng + 0.00035 * Math.sin(a) }); }
       const icon = L.divIcon({ className: "pin", html: `<span>${i + 1}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] });
       L.marker([j.lat, j.lng], { icon }).addTo(map).bindPopup(`<b>${i + 1}. ${J().esc(j.person || "")}</b><br>${J().esc(j.address)}`);
       pts.push([j.lat, j.lng]);
     });
     if (pts.length > 1) L.polyline(pts, { color: "#1F2A44", weight: 3, dashArray: "6 6" }).addTo(map);
-    if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 14 });
+    if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
     else map.setView([HOME_FALLBACK.lat, HOME_FALLBACK.lng], 11);
     setTimeout(() => map.invalidateSize(), 200);
   }
@@ -681,6 +688,7 @@
     }
     if (!(await updateJob(j.id, patch))) return;
     await logAttempt(j, kind === "Attempt" ? "Attempt" : kind === "Served" ? "Served" : "Non-Serve", note);
+    RS.lastAction = { job: j, kind, before: { status: j.status, attempt_count: j.attempt_count || 0, done_at: j.done_at, on_today: true } };
     RS.stops = RS.stops.filter((x) => x.id !== j.id);
     if (RS.started && RS.stops.filter((x) => x.lat != null).length > 1) {
       const here = RS.here || await getHere() || (j.lat != null ? { lat: j.lat, lng: j.lng } : null);
@@ -692,7 +700,36 @@
     await saveOrder();
     drawStops(); drawMap(); drawAddMore();
     checkNearby();
-    J().refreshBadges && J().refreshBadges(); J().toast(kind === "Served" ? "Served ✓ — next stop" : kind === "Attempt" ? "Attempt logged — next stop" : "Non-served — next stop");
+    J().refreshBadges && J().refreshBadges(); showDid();
+  }
+
+  // Big confirmation so a stop never just vanishes on you
+  function showDid() {
+    const box = byId("rDid"); if (!box || !RS.lastAction) return;
+    const { esc } = J();
+    const { job, kind } = RS.lastAction;
+    const word = kind === "Served" ? "SERVED ✓" : kind === "Attempt" ? "ATTEMPT LOGGED" : "NON-SERVED ✓";
+    const left = RS.stops.length;
+    box.innerHTML = `<div class="did ${kind === "Served" ? "ok" : kind === "Attempt" ? "att" : "non"}">
+      <div class="did-word">${word}</div>
+      <div class="did-who">${esc(job.person || "")} ${esc(job.address || "")}</div>
+      <div class="row-gap">
+        <button class="btn go grow" id="didNext">${left ? `Next stop → (${left} left)` : "All stops done today 🎉"}</button>
+        <button class="btn ghost" id="didUndo">Undo</button>
+      </div>
+    </div>`;
+    byId("didNext").onclick = () => { RS.lastAction = null; box.innerHTML = ""; window.scrollTo({ top: 0, behavior: "smooth" }); };
+    byId("didUndo").onclick = async () => {
+      const { job: j, before } = RS.lastAction;
+      await updateJob(j.id, { status: before.status, attempt_count: before.attempt_count, done_at: before.done_at, on_today: true });
+      const { data } = await J().db.from("jes_attempts").select("id").eq("job_id", j.id).order("at", { ascending: false }).limit(1);
+      if (data && data[0]) await J().db.from("jes_attempts").delete().eq("id", data[0].id);
+      Object.assign(j, before);
+      RS.stops = [j].concat(RS.stops);
+      RS.lastAction = null; box.innerHTML = "";
+      await saveOrder(); drawStops(); drawMap();
+      J().toast("Undone — back on the route");
+    };
   }
 
   function drawAddMore() {

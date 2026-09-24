@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 23: packets row lines up) */
+/* J EMPIRE SERVER — style.css (version 24: 5 columns stay put, route confirmation, ready-to-bill) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -659,8 +659,8 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
   /* a long column splits into two skinny ones instead of scrolling forever */
   .col-list.two-up { columns: 2; column-gap: .45rem; }
   .col-list.two-up > * { break-inside: avoid; margin-bottom: .45rem; }
-  .job-col { max-height: none; overflow: visible; }
-  .job-cols.five .job-col:has(.two-up) { grid-column: span 2; }
+  .job-col { max-height: 72vh; overflow-y: auto; }
+
 }
 
 
@@ -696,5 +696,23 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
 .sheet .tgl.inset { margin-left: 1.6rem; background: var(--paper); }
 .sheet .tgl.inset input { width: 5rem; max-width: 5rem; min-height: 44px; text-align: center; flex-shrink: 0; }
 .sheet .private-only[hidden] { display: none; }
+
+
+/* ================= Route: what you just did ================= */
+.did { border-radius: 16px; padding: .8rem .9rem; display: flex; flex-direction: column; gap: .5rem; color: #fff; }
+.did.ok { background: var(--green); }
+.did.att { background: var(--gold); color: #1F2A44; }
+.did.non { background: var(--navy); color: #F2E6C9; }
+.did-word { font-family: var(--serif); font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.did-who { font-size: .95rem; opacity: .95; }
+.did .btn.go { background: #fff; color: var(--navy); }
+.did .btn.ghost { background: transparent; color: inherit; border-color: currentColor; }
+
+/* ================= Invoices: waiting to be billed ================= */
+.ready-box { background: var(--green-bg); border: 2px solid var(--green); border-radius: 12px; padding: .6rem .7rem; display: flex; flex-direction: column; gap: .25rem; }
+.ready-box.empty { background: var(--paper); border: 1px dashed var(--line); color: var(--navy-2); font-size: .9rem; text-align: center; padding: .7rem; }
+.ready-head { font-weight: 700; color: var(--green); font-size: .95rem; }
+.ready-line { display: flex; justify-content: space-between; gap: .5rem; font-size: .88rem; border-bottom: 1px solid #D5E3D2; padding: .15rem 0; }
+.ready-box .btn.go { margin-top: .4rem; }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

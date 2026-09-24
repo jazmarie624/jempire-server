@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 9: letterhead invoice for private clients)
+// J EMPIRE SERVER — office.js (version 10: one-tap Checked, ready-to-bill jobs on Invoices)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -57,7 +57,7 @@
   let doneCol = "check";
   async function drawDone() {
     const { esc, money } = J();
-    byId("screen").innerHTML = `<section class="office"><div class="jobs-head"><h1>Done</h1><span class="muted small">Tick the 3 boxes after you check each job in the client's app.</span></div>
+    byId("screen").innerHTML = `<section class="office"><div class="jobs-head"><h1>Done</h1><span class="muted small">Check the job in the client's app, then tap <b>Checked ✓</b>. Bill them on <b>5 Invoices</b>.</span></div>
       <div class="chips phone-only" id="dColPick"></div>
       <div id="dBody"><p class="muted">Loading…</p></div></section>
       <div class="sheet-back" id="sheetBack" hidden></div>`;
@@ -67,22 +67,22 @@
     const monthAgo = Date.now() - 30 * 864e5;
     const done = D.jobs.filter(isDone).sort((a, b) => new Date(b.done_at || 0) - new Date(a.done_at || 0));
     const COLS = [
-      { id: "check", title: "To check", sub: "Verify in the client's app", jobs: done.filter((j) => !checked(j)) },
-      { id: "ready", title: "Checked · ready to bill", sub: "Put these on an invoice", jobs: done.filter((j) => checked(j) && !billed(j)) },
-      { id: "billed", title: "Billed", sub: "On an invoice (last 30 days)", jobs: done.filter((j) => checked(j) && billed(j) && new Date(j.done_at || 0).getTime() > monthAgo) }
+      { id: "check", title: "To check", sub: "Verify in the client's app, then tap Checked ✓", jobs: done.filter((j) => !checked(j)) },
+      { id: "ready", title: "Checked · ready to bill", sub: "Bill them on 5 Invoices", jobs: done.filter((j) => checked(j) && !billed(j)) },
+      { id: "billed", title: "Billed", sub: "Lands here once the invoice is made", jobs: done.filter((j) => checked(j) && billed(j) && new Date(j.done_at || 0).getTime() > monthAgo) }
     ];
+    const who = (j) => j.person || (j.address ? j.address.split(",")[0] : "(no name)");
     const card = (j) => `
       <div class="dcard ${checked(j) ? "all-ok" : ""}">
-        <div class="jc-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+        <div class="jc-name">${esc(who(j))}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+        <div class="jc-addr">${esc(j.address || "")}</div>
         <div class="jc-meta">${esc(j.client || "")} · <span class="tag done">${j.status === "Served" ? "Served" : "Non-serve"}</span> ${j.done_at ? esc(md(j.done_at)) : ""}${j.invoice_id ? ` · <span class="tag">On invoice</span>` : ""}</div>
-        <div class="mini-checks">
-          <label><input type="checkbox" data-chk="chk_client_app" data-id="${j.id}" ${j.chk_client_app ? "checked" : ""}> In app</label>
-          <label><input type="checkbox" data-chk="chk_proof" data-id="${j.id}" ${j.chk_proof ? "checked" : ""}> Proof</label>
-          <label><input type="checkbox" data-chk="chk_price" data-id="${j.id}" ${j.chk_price ? "checked" : ""}> Price</label>
-        </div>
         <div class="jc-btns">
           <label class="price-in">$<input inputmode="decimal" data-price="${j.id}" value="${Number(j.price || 0).toFixed(2)}" aria-label="Price" ${j.invoice_id ? "disabled" : ""}></label>
-          <button class="btn ghost thin" data-open="${j.id}">Edit</button>
+          ${checked(j)
+            ? `<button class="btn ghost thin" data-uncheck="${j.id}">Undo check</button>`
+            : `<button class="btn go thin" data-check="${j.id}">Checked ✓</button>`}
+          <button class="btn ghost thin" data-open="${j.id}">Open</button>
         </div>
       </div>`;
     byId("dColPick").innerHTML = COLS.map((c) => `<button class="chip ${c.id === doneCol ? "on" : ""}" data-col="${c.id}">${c.title} (${c.jobs.length})</button>`).join("");
@@ -94,10 +94,13 @@
       </div>`).join("")}</div>`;
     const findJ = (id) => D.jobs.find((j) => j.id === id);
     const body = byId("dBody");
-    body.querySelectorAll("[data-chk]").forEach((c) => c.onchange = async () => {
-      const j = findJ(c.dataset.id); j[c.dataset.chk] = c.checked;
-      J().refreshBadges && J().refreshBadges(); await upd("jes_jobs", j.id, { [c.dataset.chk]: c.checked });
-      if (checked(j)) { J().toast("All checked ✓ — moved to ready to bill"); drawDone(); }
+    body.querySelectorAll("[data-check]").forEach((b) => b.onclick = async () => {
+      if (await upd("jes_jobs", b.dataset.check, { chk_client_app: true, chk_proof: true, chk_price: true })) {
+        J().toast("Checked ✓ — ready to bill on 5 Invoices"); J().refreshBadges && J().refreshBadges(); drawDone();
+      }
+    });
+    body.querySelectorAll("[data-uncheck]").forEach((b) => b.onclick = async () => {
+      if (await upd("jes_jobs", b.dataset.uncheck, { chk_client_app: false, chk_proof: false, chk_price: false })) drawDone();
     });
     body.querySelectorAll("[data-price]").forEach((inp) => inp.onchange = async () => {
       const v = Number(String(inp.value).replace(/[^0-9.]/g, "")) || 0;
@@ -145,6 +148,18 @@
           <span class="row-gap"><button class="btn ghost thin" data-paygrp="${esc(g)}">$ Payment</button><button class="btn thin" data-new="${esc(g)}">+ New</button></span>
         </div>
         <div class="col-totals"><span class="bad">Owed ${money(owed)}</span><span class="ok">Paid ${money(paid)}</span></div>
+        ${(() => {
+          const ready = D.jobs.filter((j) => GROUPS[g].clients.includes(j.client) && isDone(j) && !j.invoice_id && !j.paid_upfront &&
+            j.chk_client_app && j.chk_proof && j.chk_price);
+          const tot = ready.reduce((a, j) => a + Number(j.price || 0), 0);
+          if (!ready.length) return `<div class="ready-box empty">Nothing waiting to be billed.</div>`;
+          return `<div class="ready-box">
+            <div class="ready-head">Ready to bill · ${ready.length} job${ready.length > 1 ? "s" : ""} · <b>${money(tot)}</b></div>
+            ${ready.slice(0, 6).map((j) => `<div class="ready-line"><span>${esc(j.person || (j.address ? j.address.split(",")[0] : "(no name)"))}${j.job_no ? " #" + esc(j.job_no) : ""}</span><b>${money(j.price)}</b></div>`).join("")}
+            ${ready.length > 6 ? `<div class="ready-line muted">…and ${ready.length - 6} more</div>` : ""}
+            <button class="btn go" data-billnow="${esc(g)}">Create invoice →</button>
+          </div>`;
+        })()}
         <div class="col-list">${list.length ? list.map((i) => `
           <button class="inv-mini ${i.status === "Paid" ? "paid" : "pending"}" data-open="${i.id}">
             <span class="im-top"><b>${esc(i.period_start ? md(fromIso(i.period_start)) + " – " + md(fromIso(i.period_end)) : "")}</b><span class="im-total">${money(i.total)}</span></span>
@@ -186,6 +201,7 @@
     byId("colPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { phoneCol = b.dataset.col; drawInvoices(); } };
     scr.querySelectorAll("[data-new]").forEach((b) => b.onclick = () => newInvoice(D, b.dataset.new));
     scr.querySelectorAll("[data-paygrp]").forEach((b) => b.onclick = () => recordPayment(D, b.dataset.paygrp));
+    scr.querySelectorAll("[data-billnow]").forEach((b) => b.onclick = () => newInvoice(D, b.dataset.billnow, { autoTick: true }));
     if (byId("mNotBilled")) byId("mNotBilled").onclick = () => newInvoice(D, phoneCol);
     scr.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openInvoice(D.invoices.find((i) => i.id === b.dataset.open), D));
   }
@@ -603,13 +619,17 @@
   }
 
   // ---------- new invoice: you pick every job, prices editable, extra charges allowed ----------
-  function newInvoice(D, grp) {
+  function newInvoice(D, grp, opts) {
     const { esc, money } = J();
     const back = byId("sheetBack");
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const endThu = today.getDay() === 4 ? today : addDays(weekStart(), 7);
     const g0 = GROUPS[grp] ? grp : "Jean";
     const st = { grp: g0, start: addDays(endThu, -7), end: endThu, billTo: GROUPS[g0].billTo, picked: new Set(), price: {}, extras: [], showAll: false };
+    if (opts && opts.autoTick) {
+      D.jobs.filter((j) => GROUPS[g0].clients.includes(j.client) && isDone(j) && !j.invoice_id && !j.paid_upfront &&
+        j.chk_client_app && j.chk_proof && j.chk_price).forEach((j) => st.picked.add(j.id));
+    }
     const priceOf = (j) => (st.price[j.id] != null ? st.price[j.id] : Number(j.price || 0));
     const num = (v) => Number(String(v).replace(/[^0-9.]/g, "")) || 0;
     let pool = [];
