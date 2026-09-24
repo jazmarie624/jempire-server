@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 10: tidy toggle list in the job sheet)
+// J EMPIRE SERVER — intake.js (version 11: Done button fixed, private fields back)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -532,12 +532,19 @@
           <label>Due date<input id="f_due_date" type="date" value="${esc(d.due_date)}"></label>
         </div>
         <label>Notes<textarea id="f_notes" class="notes-box" rows="5">${esc(d.notes)}</textarea></label>
+        <div class="private-only" ${d.client === "Private" ? "" : "hidden"}>
+          <div class="grid2">
+            <label>Client phone<input id="f_private_phone" inputmode="tel" value="${esc(d.private_phone)}"></label>
+            <label>Client email<input id="f_private_email" inputmode="email" value="${esc(d.private_email)}"></label>
+          </div>
+        </div>
         <div class="toggle-list">
           <label class="tgl" ${PAPER_CLIENTS.includes(d.client) ? "" : "hidden"} id="f_papers_line">
             <input type="checkbox" id="f_has_papers" ${d.has_papers ? "checked" : ""}><span>📄 I have the papers for this job</span></label>
           <label class="tgl"><input type="checkbox" id="f_is_business" ${d.is_business ? "checked" : ""}><span>🏢 Business — serve 10–12 or 2–4 only</span></label>
           <label class="tgl"><input type="checkbox" id="f_is_foreclosure" ${d.is_foreclosure ? "checked" : ""}><span>📚 Foreclosure — pays per packet</span></label>
           <label class="tgl inset"><span>How many packets?</span><input id="f_packets" inputmode="numeric" value="${d.packets || 1}"></label>
+          <label class="tgl" ${d.client === "Private" ? "" : "hidden"} id="f_paid_line"><input type="checkbox" id="f_paid_upfront" ${d.paid_upfront ? "checked" : ""}><span>💵 Paid upfront (private client)</span></label>
           <label class="tgl"><input type="checkbox" id="f_on_hold" ${d.on_hold ? "checked" : ""}><span>⏸ Put this job on hold</span></label>
         </div>
         <details><summary>Original pasted text</summary><pre class="raw">${esc(d.raw_text || "(none)")}</pre></details>
@@ -551,7 +558,9 @@
     const grow = (el) => { el.style.height = "auto"; el.style.height = (el.scrollHeight + 4) + "px"; };
     back.querySelectorAll("textarea").forEach((t) => { grow(t); t.addEventListener("input", () => grow(t)); });
     $f("client").onchange = () => {
-      back.querySelector(".private-only").hidden = $f("client").value !== "Private";
+      const isPriv = $f("client").value === "Private";
+      const po = back.querySelector(".private-only"); if (po) po.hidden = !isPriv;
+      const pl = document.getElementById("f_paid_line"); if (pl) pl.hidden = !isPriv;
       document.getElementById("f_papers_line").hidden = !PAPER_CLIENTS.includes($f("client").value);
     };
     $f("address").onblur = () => {
@@ -561,16 +570,16 @@
     };
     document.getElementById("shDone").onclick = () => {
       ["client", "service", "job_no", "person", "address", "county", "due_date", "notes", "private_phone", "private_email"]
-        .forEach((k) => { d[k] = $f(k).value.trim(); });
+        .forEach((k) => { if ($f(k)) d[k] = $f(k).value.trim(); });
       d.address = window.JES_PARSE.cleanAddress(d.address);
       if (!d.county) d.county = countyFor(d.address);
       d.price = Number(String($f("price").value).replace(/[^0-9.]/g, "")) || 0;
-      d.paid_upfront = $f("paid_upfront").checked;
-      d.has_papers = PAPER_CLIENTS.includes(d.client) ? $f("has_papers").checked : true;
-      d.is_foreclosure = $f("is_foreclosure").checked;
-      d.packets = Math.max(1, parseInt($f("packets").value, 10) || 1);
-      d.is_business = $f("is_business").checked;
-      d.on_hold = $f("on_hold").checked;
+      d.paid_upfront = !!($f("paid_upfront") && $f("paid_upfront").checked);
+      d.has_papers = PAPER_CLIENTS.includes(d.client) ? !!($f("has_papers") && $f("has_papers").checked) : true;
+      d.is_foreclosure = !!($f("is_foreclosure") && $f("is_foreclosure").checked);
+      d.packets = Math.max(1, parseInt($f("packets") ? $f("packets").value : 1, 10) || 1);
+      d.is_business = !!($f("is_business") && $f("is_business").checked);
+      d.on_hold = !!($f("on_hold") && $f("on_hold").checked);
       if (d.is_foreclosure && d.client === "ProVest" && !Number($f("price").value)) d.price = d.packets * PACKET_RATE;
       closeSheet(); saveLocal(); drawDrafts();
     };

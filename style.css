@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 22: tidy toggle rows) */
+/* J EMPIRE SERVER — style.css (version 23: packets row lines up) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -694,6 +694,7 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
 .sheet .tgl input[type="checkbox"] { width: 26px; height: 26px; flex-shrink: 0; margin: 0; }
 .sheet .tgl span { flex: 1; min-width: 0; }
 .sheet .tgl.inset { margin-left: 1.6rem; background: var(--paper); }
-.sheet .tgl.inset input { width: 5rem; min-height: 44px; text-align: center; flex-shrink: 0; }
+.sheet .tgl.inset input { width: 5rem; max-width: 5rem; min-height: 44px; text-align: center; flex-shrink: 0; }
+.sheet .private-only[hidden] { display: none; }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
