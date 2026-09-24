@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 14: C/O jobs flag themselves as Business)
+// J EMPIRE SERVER — intake.js (version 15: ignore the (0) line too)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -63,6 +63,7 @@
     a = a.replace(/,?\s*\b(OSCEOLA|ORANGE)\b\s*(COUNTY)?\s*,?\s*$/i, ""); // trailing county word
     a = a.replace(/,\s*FL\s*,?\s*(\d{5})(?:[\s-]+(\d{4}))?/i, (m, z, p4) => ", FL " + z + (p4 ? "-" + p4 : ""));
     a = a.replace(/\s+FL\s*,?\s*(\d{5})(?:[\s-]+(\d{4}))?/i, (m, z, p4) => ", FL " + z + (p4 ? "-" + p4 : ""));
+    a = a.replace(/,?\s*\(?[o0]\)?\s*$/i, "");
     a = a.replace(/,\s*,/g, ",").replace(/[,\s]+$/, "");
     return titleCase(a);
   }
@@ -219,7 +220,7 @@
   // ---------- ProVest ----------
   const PROVEST_JUNK = /^(saved|all work|corporate|q\s*search|search|include closed cases|my work|open|filters?|sort)$/i;
   function parseProVest(text, extra) {
-    const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l) && !/^\(?o\)?$/i.test(l));
+    const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l) && !/^\(?[o0]\)?[.,]?$/i.test(l));
     const isCO = (l) => /^(c\/o|c\.o\.|attn|attention)\b/i.test(l);
     const isRe = (l) => /^re\s*:/i.test(l);
     const out = [];
