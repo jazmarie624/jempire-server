@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 11: Done button fixed, private fields back)
+// J EMPIRE SERVER — intake.js (version 14: C/O jobs flag themselves as Business)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -12,7 +12,7 @@
   const RULES = {
     "ABC Legal": "Keeps: order #, name, price, address, serve-by date, attempt instructions, vehicles. Ignores: Details, Photos, History, Deliver To, and the other menu words.",
     "Ody's": "Keeps: Standard or Rush, name, ODY job #, Action date and C/O (to notes), and the address when included. Once you add an address for a name, it fills in automatically next time.",
-    "ProVest": "Keeps: each address as its own job. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
+    "ProVest": "Keeps: every address as its own job, including C/O (registered agent) and Re: (property) addresses. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
     "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map.",
     "Private": "Makes a blank job for you to fill in. If you paste an address, it's filled in for you."
   };
@@ -219,20 +219,34 @@
   // ---------- ProVest ----------
   const PROVEST_JUNK = /^(saved|all work|corporate|q\s*search|search|include closed cases|my work|open|filters?|sort)$/i;
   function parseProVest(text, extra) {
-    const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l));
+    const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l) && !/^\(?o\)?$/i.test(l));
+    const isCO = (l) => /^(c\/o|c\.o\.|attn|attention)\b/i.test(l);
+    const isRe = (l) => /^re\s*:/i.test(l);
     const out = [];
-    let buf = "";
-    const flush = () => { if (buf.trim()) out.push(buf.trim()); buf = ""; };
+    let cur = null;
+    const start = (raw, kind, person) => { cur = { raw, addr: raw, kind: kind || "", person: person || "" }; out.push(cur); };
     ls.forEach((l) => {
-      if (STREET_START.test(l)) { flush(); buf = l; }
-      else if (buf) { buf += (buf.trim().endsWith(",") ? " " : ", ") + l; }
+      if (isCO(l)) {
+        // "C/O Rftax Llc 3300 Greenwald Way N Kissimmee, FL 34741" — company, then the address
+        const body = l.replace(/^(c\/o|c\.o\.|attn|attention)\s*:?\s*/i, "");
+        const m = body.match(/^(.*?)(\d{1,6}[A-Za-z]?\s+.*)$/);
+        start(m ? m[2] : body, "Registered agent (C/O)", m ? titleCase(m[1].trim()) : "");
+        return;
+      }
+      if (isRe(l)) { start(l.replace(/^re\s*:\s*/i, ""), "Property address (Re:)", ""); return; }
+      if (STREET_START.test(l) && (!cur || hasZip(cur.addr))) { start(l); return; }
+      if (!cur) return;
+      cur.addr += (cur.addr.trim().endsWith(",") ? " " : ", ") + l;
     });
-    flush();
-    return out.map((raw) => {
+    return out.map((o) => {
       const d = blankDraft("ProVest");
-      d.raw_text = raw;
-      d.address = cleanAddress(raw);
+      d.raw_text = o.raw;
+      d.address = cleanAddress(o.addr);
       d.county = countyFor(d.address);
+      d.person = o.person || "";
+      d.notes = o.kind || "";
+      // a registered agent is a business — only servable 10–12 and 2–4
+      if (o.kind === "Registered agent (C/O)") d.is_business = true;
       return d;
     });
   }
