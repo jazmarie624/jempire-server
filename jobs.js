@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 8: flags, tap-to-type, tighter two-up cards)
+// J EMPIRE SERVER — jobs.js (version 9: tidy toggle list in the job sheet)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -284,15 +284,12 @@
           <label>Attempts<input id="g_attempt_count" inputmode="numeric" value="${esc(j.attempt_count || 0)}"></label>
         </div>
         <label>Notes<textarea id="g_notes" class="notes-box" rows="5">${esc(j.notes || "")}</textarea></label>
-        <div class="flag-row sheet-flags">
-          <label class="check-line"><input type="checkbox" id="g_is_foreclosure" ${j.is_foreclosure ? "checked" : ""}> 📚 Foreclosure</label>
-          <label class="check-line">packets <input id="g_packets" inputmode="numeric" value="${j.packets || 1}" style="width:4rem"></label>
-          <label class="check-line"><input type="checkbox" id="g_is_business" ${j.is_business ? "checked" : ""}> 🏢 Business (10–12 / 2–4)</label>
+        <div class="toggle-list">
+          ${PAPER_CLIENTS.includes(j.client) ? `<label class="tgl"><input type="checkbox" id="g_has_papers" ${j.has_papers !== false ? "checked" : ""}><span>📄 I have the papers for this job</span></label>` : ""}
+          <label class="tgl"><input type="checkbox" id="g_is_business" ${j.is_business ? "checked" : ""}><span>🏢 Business — serve 10–12 or 2–4 only</span></label>
+          <label class="tgl"><input type="checkbox" id="g_is_foreclosure" ${j.is_foreclosure ? "checked" : ""}><span>📚 Foreclosure — pays per packet</span></label>
+          <label class="tgl inset"><span>How many packets?</span><input id="g_packets" inputmode="numeric" value="${j.packets || 1}"></label>
         </div>
-        ${PAPER_CLIENTS.includes(j.client) ? `<label class="check-line"><input type="checkbox" id="g_has_papers" ${j.has_papers !== false ? "checked" : ""}> I have the papers for this job</label>` : ""}
-        ${j.client === "Private" ? `<div class="grid2">
-          <label>Client phone<input id="g_private_phone" value="${esc(j.private_phone || "")}"></label>
-          <label>Client email<input id="g_private_email" value="${esc(j.private_email || "")}"></label></div>` : ""}
         <div class="history">
           <div class="tile-label">Attempt history</div>
           ${(attempts || []).length ? attempts.map((a) => `<div class="hist-line"><b>${esc(a.kind)}</b> · ${esc(new Date(a.at).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }))}${a.note ? " · " + esc(a.note) : ""}</div>`).join("") : `<div class="muted small">No attempts yet.</div>`}

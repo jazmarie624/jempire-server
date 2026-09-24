@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 20: phone keeps roomy cards) */
+/* J EMPIRE SERVER — style.css (version 22: tidy toggle rows) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -634,6 +634,7 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
 .flag.rush.on { background: var(--red); border-color: var(--red); }
 .flag.fore.on { background: #5B3E8E; border-color: #5B3E8E; }
 .flag.biz.on { background: #2B5D8A; border-color: #2B5D8A; }
+.flag.hold.on { background: var(--gold); border-color: var(--gold); color: #1F2A44; }
 .pk { display: flex; align-items: center; gap: .3rem; font-size: .8rem; font-weight: 700; color: var(--navy-2); }
 .pk input { width: 3.2rem; min-height: 38px; text-align: center; border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); }
 .d2-price { margin-left: auto; font-weight: 700; }
@@ -679,5 +680,20 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
   .pk input { min-height: 44px; }
   .d2-price { font-size: 1rem; }
 }
+
+
+/* ================= Tidy toggle rows in job sheets ================= */
+.toggle-list { display: flex; flex-direction: column; gap: .4rem; }
+.sheet .tgl {
+  display: flex; flex-direction: row; align-items: center; gap: .7rem;
+  min-height: 54px; padding: .3rem .8rem; background: #fff;
+  border: 1px solid var(--line); border-radius: 12px;
+  font-size: 1rem; font-weight: 600; color: var(--navy); cursor: pointer;
+}
+.sheet .tgl[hidden] { display: none; }
+.sheet .tgl input[type="checkbox"] { width: 26px; height: 26px; flex-shrink: 0; margin: 0; }
+.sheet .tgl span { flex: 1; min-width: 0; }
+.sheet .tgl.inset { margin-left: 1.6rem; background: var(--paper); }
+.sheet .tgl.inset input { width: 5rem; min-height: 44px; text-align: center; flex-shrink: 0; }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

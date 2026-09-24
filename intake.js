@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 8: per-job papers, tap-to-type, Rush/Foreclosure/Business flags)
+// J EMPIRE SERVER — intake.js (version 10: tidy toggle list in the job sheet)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -84,7 +84,7 @@
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
       has_papers: !PAPER_CLIENTS.includes(client),
-      is_foreclosure: false, packets: 1, is_business: false };
+      is_foreclosure: false, packets: 1, is_business: false, on_hold: false };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
   const nameKey = (n) => (n || "").toLowerCase().replace(/(\.\.\.|…)\s*$/, "").replace(/[^a-z0-9& ]/g, " ").replace(/\s+/g, " ").trim();
@@ -463,6 +463,7 @@
           <button class="flag fore ${d.is_foreclosure ? "on" : ""}" data-flag="is_foreclosure" data-i="${i}">📚 Foreclosure</button>
           ${d.is_foreclosure ? `<label class="pk">packets <input inputmode="numeric" data-pk="${i}" value="${d.packets || 1}" aria-label="How many packets"></label>` : ""}
           <button class="flag biz ${d.is_business ? "on" : ""}" data-flag="is_business" data-i="${i}">🏢 Business</button>
+          <button class="flag hold ${d.on_hold ? "on" : ""}" data-flag="on_hold" data-i="${i}">⏸ Hold</button>
           <span class="d2-price">${J().money(d.price || 0)}</span>
         </div>
       </div>`).join("");
@@ -531,18 +532,13 @@
           <label>Due date<input id="f_due_date" type="date" value="${esc(d.due_date)}"></label>
         </div>
         <label>Notes<textarea id="f_notes" class="notes-box" rows="5">${esc(d.notes)}</textarea></label>
-        <div class="flag-row sheet-flags">
-          <label class="check-line"><input type="checkbox" id="f_is_foreclosure" ${d.is_foreclosure ? "checked" : ""}> 📚 Foreclosure</label>
-          <label class="check-line">packets <input id="f_packets" inputmode="numeric" value="${d.packets || 1}" style="width:4rem"></label>
-          <label class="check-line"><input type="checkbox" id="f_is_business" ${d.is_business ? "checked" : ""}> 🏢 Business (serve 10–12 or 2–4)</label>
-        </div>
-        <label class="check-line" ${PAPER_CLIENTS.includes(d.client) ? "" : "hidden"} id="f_papers_line"><input type="checkbox" id="f_has_papers" ${d.has_papers ? "checked" : ""}> I have the papers for this job</label>
-        <div class="private-only" ${d.client === "Private" ? "" : "hidden"}>
-          <div class="grid2">
-            <label>Client phone<input id="f_private_phone" inputmode="tel" value="${esc(d.private_phone)}"></label>
-            <label>Client email<input id="f_private_email" inputmode="email" value="${esc(d.private_email)}"></label>
-          </div>
-          <label class="check-line"><input type="checkbox" id="f_paid_upfront" ${d.paid_upfront ? "checked" : ""}> Paid upfront</label>
+        <div class="toggle-list">
+          <label class="tgl" ${PAPER_CLIENTS.includes(d.client) ? "" : "hidden"} id="f_papers_line">
+            <input type="checkbox" id="f_has_papers" ${d.has_papers ? "checked" : ""}><span>📄 I have the papers for this job</span></label>
+          <label class="tgl"><input type="checkbox" id="f_is_business" ${d.is_business ? "checked" : ""}><span>🏢 Business — serve 10–12 or 2–4 only</span></label>
+          <label class="tgl"><input type="checkbox" id="f_is_foreclosure" ${d.is_foreclosure ? "checked" : ""}><span>📚 Foreclosure — pays per packet</span></label>
+          <label class="tgl inset"><span>How many packets?</span><input id="f_packets" inputmode="numeric" value="${d.packets || 1}"></label>
+          <label class="tgl"><input type="checkbox" id="f_on_hold" ${d.on_hold ? "checked" : ""}><span>⏸ Put this job on hold</span></label>
         </div>
         <details><summary>Original pasted text</summary><pre class="raw">${esc(d.raw_text || "(none)")}</pre></details>
         <div class="sheet-btns">
@@ -574,6 +570,7 @@
       d.is_foreclosure = $f("is_foreclosure").checked;
       d.packets = Math.max(1, parseInt($f("packets").value, 10) || 1);
       d.is_business = $f("is_business").checked;
+      d.on_hold = $f("on_hold").checked;
       if (d.is_foreclosure && d.client === "ProVest" && !Number($f("price").value)) d.price = d.packets * PACKET_RATE;
       closeSheet(); saveLocal(); drawDrafts();
     };
@@ -643,9 +640,9 @@
       client: d.client, job_no: d.job_no || null, person: d.person || null, address: d.address || null,
       county: d.county || null, service: d.service || "Standard", due_date: d.due_date || null,
       price: Number(d.price) || 0, notes: d.notes || null, raw_text: d.raw_text || null,
-      status: "Active", has_papers: d.has_papers !== false,
+      status: d.on_hold ? "On Hold" : "Active", has_papers: d.has_papers !== false,
       is_foreclosure: !!d.is_foreclosure, packets: d.packets || 1, is_business: !!d.is_business,
-      on_today: S.addToday && !problems(d).length && d.has_papers !== false,
+      on_today: S.addToday && !problems(d).length && d.has_papers !== false && !d.on_hold,
       private_phone: d.private_phone || null, private_email: d.private_email || null,
       paid_upfront: !!d.paid_upfront
     }));
