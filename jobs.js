@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 7: Waiting on papers column + weekly pickup check-off)
+// J EMPIRE SERVER — jobs.js (version 8: flags, tap-to-type, tighter two-up cards)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -8,6 +8,14 @@
 
   const PAPER_CLIENTS = ["ProVest", "Userve"];
   const waitingPapers = (j) => j.status === "Active" && PAPER_CLIENTS.includes(j.client) && j.has_papers === false;
+  function flagChips(j) {
+    const out = [];
+    if (j.service === "Rush") out.push(`<span class="flag-chip rush">⚡ Rush</span>`);
+    if (j.is_foreclosure) out.push(`<span class="flag-chip fore">📚 Foreclosure${(j.packets || 1) > 1 ? " ×" + j.packets : ""}</span>`);
+    if (j.is_business) out.push(`<span class="flag-chip biz">🏢 Business · 10–12 / 2–4</span>`);
+    if (waitingPapers(j)) out.push(`<span class="flag-chip paper">📄 Waiting on papers</span>`);
+    return out.join(" ");
+  }
   const needsAddress = (j) => !j.address || !P().hasZip(j.address) || !j.county;
   const isDone = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
 
@@ -67,31 +75,54 @@
   }
 
   function jobCard(j) {
-    const { esc } = J();
+    const { esc, money } = J();
     const red = !isDone(j) && needsAddress(j);
     const cls = red ? "is-red" : j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
-    const tags = [
-      j.service === "Rush" ? `<span class="rush">Rush</span>` : "",
-      isDone(j) ? `<span class="tag done">${esc(j.status === "Served" ? "Served" : "Non-serve")}</span>` : "",
-      j.attempt_count && !isDone(j) ? `<span class="tag">Attempt ${j.attempt_count}/5</span>` : "",
-      j.due_date && !isDone(j) ? `<span class="tag ${waitingPapers(j) && new Date(j.due_date) - Date.now() < 3 * 864e5 ? "tag-urgent" : ""}">Due ${esc(fmtDate(j.due_date).slice(0, 5))}</span>` : ""
-    ].filter(Boolean).join(" ");
     const wait = waitingPapers(j);
     const canToday = j.status === "Active" && !red && !wait;
     return `
       <div class="jcard ${cls}">
-        <div class="jc-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+        <div class="jc-top">
+          <span class="tap-field name" contenteditable data-jf="person" data-id="${j.id}" data-ph="tap to add name">${esc(j.person || "")}</span>
+          <span class="tap-field jobno" contenteditable data-jf="job_no" data-id="${j.id}" data-ph="job #">${esc(j.job_no || "")}</span>
+        </div>
         <div class="jc-addr">${red ? `<b>${esc(P().problems(j).join(" · "))}</b>${j.address ? " · " : ""}` : ""}${esc(j.address || "")}</div>
-        <div class="jc-meta">${esc(j.client || "")}${j.county ? " · " + esc(j.county) : ""} ${tags}</div>
+        <div class="jc-meta">${esc(j.client || "")}${j.county ? " · " + esc(j.county) : ""}${j.attempt_count && !isDone(j) ? ` · Att ${j.attempt_count}/5` : ""}${j.due_date && !isDone(j) ? ` · Due ${esc(fmtDate(j.due_date).slice(0, 5))}` : ""} · <b>${money(j.price)}</b></div>
+        ${flagChips(j) ? `<div class="chip-row">${flagChips(j)}</div>` : ""}
         <div class="jc-btns">
           ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
-          ${wait ? `<button class="today-btn" data-gotpaper="${j.id}">📄 Got papers</button>` : ""}
-          <button class="btn ghost thin" data-open="${j.id}">${red ? "Add address" : "Edit"}</button>
+          ${wait ? `<button class="today-btn paper-btn" data-gotpaper="${j.id}">📄 Got papers</button>` : ""}
+          ${j.status === "Active" && !wait && PAPER_CLIENTS.includes(j.client) ? `<button class="mini-flag" data-nopaper="${j.id}" aria-label="Mark waiting on papers">📄</button>` : ""}
+          <button class="mini-flag ${j.service === "Rush" ? "on rush" : ""}" data-jflag="service" data-id="${j.id}" aria-label="Rush">⚡</button>
+          <button class="mini-flag ${j.is_business ? "on biz" : ""}" data-jflag="is_business" data-id="${j.id}" aria-label="Business">🏢</button>
+          <button class="btn ghost thin" data-open="${j.id}">${red ? "Fix" : "Open"}</button>
         </div>
       </div>`;
   }
 
-  // ---------- HISTORY: one column per client, newest first, month headings ----------
+  function wireCards(box, after) {
+    box.querySelectorAll(".tap-field").forEach((el) => {
+      el.onblur = async () => {
+        const j = JS.jobs.find((x) => x.id === el.dataset.id); if (!j) return;
+        const v = el.textContent.trim();
+        if (v === (j[el.dataset.jf] || "")) return;
+        j[el.dataset.jf] = v;
+        if (await updateJob(j.id, { [el.dataset.jf]: v || null })) J().toast("Saved");
+      };
+      el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
+    });
+    box.querySelectorAll("[data-jflag]").forEach((b) => b.onclick = async () => {
+      const j = JS.jobs.find((x) => x.id === b.dataset.id);
+      const f = b.dataset.jflag;
+      const patch = f === "service" ? { service: j.service === "Rush" ? "Standard" : "Rush" } : { [f]: !j[f] };
+      Object.assign(j, patch);
+      if (await updateJob(j.id, patch)) after();
+    });
+    box.querySelectorAll("[data-nopaper]").forEach((b) => b.onclick = async () => {
+      if (await updateJob(b.dataset.nopaper, { has_papers: false, on_today: false })) { J().toast("Moved to waiting on papers"); J().refreshBadges && J().refreshBadges(); after(); }
+    });
+  }
+
   const H_CLIENTS = ["ProVest", "Userve", "Ody's", "ABC Legal", "Private"];
   function moneyStatus(j) {
     const inv = j.invoice_id && JS.invs[j.invoice_id];
@@ -110,6 +141,7 @@
     return `<div class="hcard">
       <div class="jc-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
       <div class="jc-addr">${esc(j.address || "No address on file")}</div>
+      ${flagChips(j) ? `<div class="chip-row">${flagChips(j)}</div>` : ""}
       <div class="hc-foot"><span class="mstat ${m.cls}">${esc(m.t)}</span><span class="hc-right">${esc(d ? fmtDate(d).slice(0, 5) : "")} · <b>${money(j.price)}</b></span></div>
       <div class="jc-btns"><button class="btn ghost thin" data-open="${j.id}">Open</button></div>
     </div>`;
@@ -157,11 +189,12 @@
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
           <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
           ${c.id === "papers" && jobs.length ? `<button class="btn go thin" data-pickup="1">📄 Got papers from Jean</button>` : ""}
-          <div class="col-list">${jobs.length ? jobs.map(jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
+          <div class="col-list ${jobs.length > 7 ? "two-up" : ""}">${jobs.length ? jobs.map(jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
         </div>`).join("")}</div>
         <p class="muted small center">Finished and paid jobs are in <b>History</b> (switch at the top).</p>`;
       byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { JS.col = b.dataset.col; drawList(); } };
     }
+    wireCards(body, drawList);
     body.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs));
     body.querySelectorAll("[data-gotpaper]").forEach((b) => b.onclick = async () => {
       if (await updateJob(b.dataset.gotpaper, { has_papers: true })) { J().toast("Papers in hand ✓ — ready to route"); J().refreshBadges && J().refreshBadges(); drawJobs(); }
@@ -216,6 +249,11 @@
     draw();
   }
 
+  function businessHoursNow() {
+    const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+    return (h >= 10 && h < 12) || (h >= 14 && h < 16);
+  }
+
   function fmtDate(iso) {
     const [y, m, d] = String(iso).slice(0, 10).split("-");
     return `${m}/${d}/${y}`;
@@ -246,6 +284,11 @@
           <label>Attempts<input id="g_attempt_count" inputmode="numeric" value="${esc(j.attempt_count || 0)}"></label>
         </div>
         <label>Notes<textarea id="g_notes" class="notes-box" rows="5">${esc(j.notes || "")}</textarea></label>
+        <div class="flag-row sheet-flags">
+          <label class="check-line"><input type="checkbox" id="g_is_foreclosure" ${j.is_foreclosure ? "checked" : ""}> 📚 Foreclosure</label>
+          <label class="check-line">packets <input id="g_packets" inputmode="numeric" value="${j.packets || 1}" style="width:4rem"></label>
+          <label class="check-line"><input type="checkbox" id="g_is_business" ${j.is_business ? "checked" : ""}> 🏢 Business (10–12 / 2–4)</label>
+        </div>
         ${PAPER_CLIENTS.includes(j.client) ? `<label class="check-line"><input type="checkbox" id="g_has_papers" ${j.has_papers !== false ? "checked" : ""}> I have the papers for this job</label>` : ""}
         ${j.client === "Private" ? `<div class="grid2">
           <label>Client phone<input id="g_private_phone" value="${esc(j.private_phone || "")}"></label>
@@ -287,6 +330,9 @@
       patch.price = Number(String(f("price").value).replace(/[^0-9.]/g, "")) || 0;
       patch.attempt_count = parseInt(f("attempt_count").value, 10) || 0;
       if (f("has_papers")) { patch.has_papers = f("has_papers").checked; if (!patch.has_papers) patch.on_today = false; }
+      patch.is_foreclosure = f("is_foreclosure").checked;
+      patch.packets = Math.max(1, parseInt(f("packets").value, 10) || 1);
+      patch.is_business = f("is_business").checked;
       if (patch.address !== j.address) { patch.lat = null; patch.lng = null; }
       if ((patch.status === "Served" || patch.status === "Non-Serve Complete") && !j.done_at) { patch.done_at = new Date().toISOString(); patch.on_today = false; }
       if (patch.status === "Active" || patch.status === "On Hold") patch.done_at = null;
@@ -563,6 +609,8 @@
             <div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} ${j.service === "Rush" ? `<span class="rush">Rush</span>` : ""}</div>
             <div class="draft-addr">${esc(j.address)}</div>
             ${first ? `<div class="next-label">${RS.started ? "NEXT STOP" : "FIRST STOP"} · ${i + 1} of ${RS.stops.length}</div>` : ""}
+            ${flagChips(j) ? `<div class="chip-row">${flagChips(j)}</div>` : ""}
+            ${j.is_business && !businessHoursNow() ? `<div class="biz-warn">🏢 Registered agent hours are 10–12 and 2–4 — it's outside those hours now</div>` : ""}
             <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.lat == null ? ` · <b class="bad">📍 No map pin — check address</b>` : j.geoApprox ? ` · <b class="bad">Pin is approximate</b>` : ""}</div>
           </div>
           <div class="move">
@@ -671,7 +719,7 @@
       <div class="print-head"><b>Route · ${esc(RS.county)} County</b><span>${esc(d)} · ${RS.stops.length} stops</span></div>
       <div class="print-grid">${RS.stops.map((j, i) => `
         <div class="print-box">
-          <div class="pb-top"><span class="pb-num">${i + 1}</span>${j.service === "Rush" ? `<span class="pb-rush">RUSH</span>` : ""}</div>
+          <div class="pb-top"><span class="pb-num">${i + 1}</span><span>${j.service === "Rush" ? `<span class="pb-rush">RUSH</span> ` : ""}${j.is_foreclosure ? `<span class="pb-rush">FORECL ×${j.packets || 1}</span> ` : ""}${j.is_business ? `<span class="pb-rush">BUS 10-12/2-4</span>` : ""}</span></div>
           <div class="pb-name">${esc(j.person || "(no name)")}</div>
           <div>${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</div>
           <div>${esc(j.address)}</div>

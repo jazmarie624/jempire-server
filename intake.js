@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 7: "Papers in hand?" for ProVest + Userve)
+// J EMPIRE SERVER — intake.js (version 8: per-job papers, tap-to-type, Rush/Foreclosure/Business flags)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -79,10 +79,12 @@
 
   // Jean prints ProVest + Userve papers and hands them over weekly
   const PAPER_CLIENTS = ["ProVest", "Userve"];
+  const PACKET_RATE = 15;   // ProVest foreclosures: $15 per packet
   function blankDraft(client) {
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
-      has_papers: !PAPER_CLIENTS.includes(client) };
+      has_papers: !PAPER_CLIENTS.includes(client),
+      is_foreclosure: false, packets: 1, is_business: false };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
   const nameKey = (n) => (n || "").toLowerCase().replace(/(\.\.\.|…)\s*$/, "").replace(/[^a-z0-9& ]/g, " ").replace(/\s+/g, " ").trim();
@@ -445,20 +447,50 @@
       : `<span class="muted">Pick the client, paste their jobs, and tap Build Jobs.</span>`;
 
     box.innerHTML = withP.map(({ d, i, p }) => `
-      <div class="draft ${p.length ? "is-red" : "is-green"}">
-        <span class="dot" aria-hidden="true"></span>
-        <div class="draft-text">
-          <div class="draft-name">${esc(d.person || "(no name yet)")}${d.job_no ? ` <span class="jobno">#${esc(d.job_no)}</span>` : ""}${d.service === "Rush" ? ` <span class="rush">Rush</span>` : ""}</div>
-          <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
-          ${!p.length && laterNotes(d) ? `<div class="draft-later">${esc(laterNotes(d))}</div>` : ""}
-          ${PAPER_CLIENTS.includes(d.client) && !d.has_papers ? `<div class="draft-later paper-wait">📄 Waiting on papers from Jean</div>` : ""}
+      <div class="draft dcard2 ${p.length ? "is-red" : "is-green"}">
+        <div class="d2-top">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="tap-field name" contenteditable data-f="person" data-i="${i}" data-ph="tap to add name">${esc(d.person || "")}</span>
+          <span class="tap-field jobno" contenteditable data-f="job_no" data-i="${i}" data-ph="job #">${esc(d.job_no || "")}</span>
+          <button class="icon-btn" data-edit="${i}" aria-label="Open ${esc(d.person || d.address || "job")}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
+          </button>
         </div>
-        <button class="icon-btn" data-edit="${i}" aria-label="Edit ${esc(d.person || d.address || "job")}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
-        </button>
+        <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
+        <div class="flag-row">
+          ${PAPER_CLIENTS.includes(d.client) ? `<button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "Waiting on Jean"}</button>` : ""}
+          <button class="flag rush ${d.service === "Rush" ? "on" : ""}" data-flag="service" data-i="${i}">⚡ Rush</button>
+          <button class="flag fore ${d.is_foreclosure ? "on" : ""}" data-flag="is_foreclosure" data-i="${i}">📚 Foreclosure</button>
+          ${d.is_foreclosure ? `<label class="pk">packets <input inputmode="numeric" data-pk="${i}" value="${d.packets || 1}" aria-label="How many packets"></label>` : ""}
+          <button class="flag biz ${d.is_business ? "on" : ""}" data-flag="is_business" data-i="${i}">🏢 Business</button>
+          <span class="d2-price">${J().money(d.price || 0)}</span>
+        </div>
       </div>`).join("");
 
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openSheet(Number(b.getAttribute("data-edit"))));
+    // tap the name or job # and just type
+    box.querySelectorAll(".tap-field").forEach((el) => {
+      el.onblur = () => {
+        const d = S.drafts[Number(el.dataset.i)];
+        d[el.dataset.f] = el.textContent.trim();
+        saveLocal(); drawDrafts();
+      };
+      el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
+    });
+    // one tap per flag
+    box.querySelectorAll("[data-flag]").forEach((b) => b.onclick = () => {
+      const d = S.drafts[Number(b.dataset.i)], f = b.dataset.flag;
+      if (f === "service") d.service = d.service === "Rush" ? "Standard" : "Rush";
+      else d[f] = !d[f];
+      if (f === "is_foreclosure" && d.is_foreclosure && d.client === "ProVest") d.price = (d.packets || 1) * PACKET_RATE;
+      saveLocal(); drawDrafts();
+    });
+    box.querySelectorAll("[data-pk]").forEach((i) => i.onchange = () => {
+      const d = S.drafts[Number(i.dataset.pk)];
+      d.packets = Math.max(1, parseInt(i.value, 10) || 1);
+      if (d.client === "ProVest") d.price = d.packets * PACKET_RATE;
+      saveLocal(); drawDrafts();
+    });
 
     const area = document.getElementById("inSaveArea");
     if (!S.drafts.length) { area.innerHTML = ""; return; }
@@ -499,6 +531,11 @@
           <label>Due date<input id="f_due_date" type="date" value="${esc(d.due_date)}"></label>
         </div>
         <label>Notes<textarea id="f_notes" class="notes-box" rows="5">${esc(d.notes)}</textarea></label>
+        <div class="flag-row sheet-flags">
+          <label class="check-line"><input type="checkbox" id="f_is_foreclosure" ${d.is_foreclosure ? "checked" : ""}> 📚 Foreclosure</label>
+          <label class="check-line">packets <input id="f_packets" inputmode="numeric" value="${d.packets || 1}" style="width:4rem"></label>
+          <label class="check-line"><input type="checkbox" id="f_is_business" ${d.is_business ? "checked" : ""}> 🏢 Business (serve 10–12 or 2–4)</label>
+        </div>
         <label class="check-line" ${PAPER_CLIENTS.includes(d.client) ? "" : "hidden"} id="f_papers_line"><input type="checkbox" id="f_has_papers" ${d.has_papers ? "checked" : ""}> I have the papers for this job</label>
         <div class="private-only" ${d.client === "Private" ? "" : "hidden"}>
           <div class="grid2">
@@ -534,6 +571,10 @@
       d.price = Number(String($f("price").value).replace(/[^0-9.]/g, "")) || 0;
       d.paid_upfront = $f("paid_upfront").checked;
       d.has_papers = PAPER_CLIENTS.includes(d.client) ? $f("has_papers").checked : true;
+      d.is_foreclosure = $f("is_foreclosure").checked;
+      d.packets = Math.max(1, parseInt($f("packets").value, 10) || 1);
+      d.is_business = $f("is_business").checked;
+      if (d.is_foreclosure && d.client === "ProVest" && !Number($f("price").value)) d.price = d.packets * PACKET_RATE;
       closeSheet(); saveLocal(); drawDrafts();
     };
     document.getElementById("shRemove").onclick = () => {
@@ -603,6 +644,7 @@
       county: d.county || null, service: d.service || "Standard", due_date: d.due_date || null,
       price: Number(d.price) || 0, notes: d.notes || null, raw_text: d.raw_text || null,
       status: "Active", has_papers: d.has_papers !== false,
+      is_foreclosure: !!d.is_foreclosure, packets: d.packets || 1, is_business: !!d.is_business,
       on_today: S.addToday && !problems(d).length && d.has_papers !== false,
       private_phone: d.private_phone || null, private_email: d.private_email || null,
       paid_upfront: !!d.paid_upfront

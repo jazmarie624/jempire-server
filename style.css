@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 18: waiting on papers) */
+/* J EMPIRE SERVER — style.css (version 20: phone keeps roomy cards) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -611,5 +611,73 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
 .paper-wait { color: var(--gold-text); font-weight: 700; }
 .col-papers { border-top: 4px solid var(--gold); }
 .tag-urgent { background: var(--red); border-color: var(--red); color: #fff; }
+
+
+/* ================= Flags, tap-to-type, tighter cards ================= */
+.tap-field { display: inline-block; min-width: 3rem; padding: .15rem .35rem; border-radius: 6px; border: 1px dashed transparent; }
+.tap-field:hover { border-color: var(--line); }
+.tap-field:focus { outline: 2px solid var(--gold); background: #fff; }
+.tap-field:empty:before { content: attr(data-ph); color: #A79F8C; font-weight: 400; }
+.tap-field.name { font-weight: 700; }
+.tap-field.jobno { color: var(--navy-2); font-weight: 600; font-size: .9em; }
+.jc-top, .d2-top { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+.d2-top .dot { flex-shrink: 0; }
+.d2-top .icon-btn { margin-left: auto; }
+.dcard2 { flex-direction: column; align-items: stretch; gap: .25rem; }
+.flag-row { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.flag {
+  min-height: 38px; padding: 0 .6rem; border-radius: 999px; font-size: .82rem; font-weight: 700;
+  border: 1px solid var(--line); background: #fff; color: var(--navy-2);
+}
+.flag.on { color: #fff; }
+.flag.paper.on { background: var(--gold); border-color: var(--gold); color: #1F2A44; }
+.flag.rush.on { background: var(--red); border-color: var(--red); }
+.flag.fore.on { background: #5B3E8E; border-color: #5B3E8E; }
+.flag.biz.on { background: #2B5D8A; border-color: #2B5D8A; }
+.pk { display: flex; align-items: center; gap: .3rem; font-size: .8rem; font-weight: 700; color: var(--navy-2); }
+.pk input { width: 3.2rem; min-height: 38px; text-align: center; border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); }
+.d2-price { margin-left: auto; font-weight: 700; }
+.chip-row { display: flex; flex-wrap: wrap; gap: .25rem; }
+.flag-chip { font-size: .72rem; font-weight: 700; padding: .12rem .4rem; border-radius: 6px; color: #fff; white-space: nowrap; }
+.flag-chip.rush { background: var(--red); }
+.flag-chip.fore { background: #5B3E8E; }
+.flag-chip.biz { background: #2B5D8A; }
+.flag-chip.paper { background: var(--gold); color: #1F2A44; }
+.mini-flag { width: 40px; min-height: 40px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 1rem; }
+.mini-flag.on.rush { background: var(--red); border-color: var(--red); }
+.mini-flag.on.biz { background: #2B5D8A; border-color: #2B5D8A; }
+.paper-btn { border-color: var(--gold); color: var(--gold-text); }
+.biz-warn { background: #E7EFF6; border: 1px solid #2B5D8A; color: #1F3F5E; border-radius: 8px; padding: .3rem .5rem; font-size: .82rem; font-weight: 600; }
+.sheet-flags { gap: .6rem; }
+/* tighter job cards */
+.jcard { padding: .45rem .55rem; gap: .12rem; }
+.jc-addr { font-size: .82rem; }
+.jc-meta { font-size: .76rem; }
+.jc-btns { gap: .3rem; margin-top: .25rem; }
+@media (min-width: 900px) {
+  /* a long column splits into two skinny ones instead of scrolling forever */
+  .col-list.two-up { columns: 2; column-gap: .45rem; }
+  .col-list.two-up > * { break-inside: avoid; margin-bottom: .45rem; }
+  .job-col { max-height: none; overflow: visible; }
+  .job-cols.five .job-col:has(.two-up) { grid-column: span 2; }
+}
+
+
+/* ---------- iPhone: tighter cards must stay readable ---------- */
+@media (max-width: 899px) {
+  .jcard, .dcard2 { padding: .6rem .7rem; gap: .25rem; }
+  .jc-name, .tap-field.name { font-size: 1rem; }
+  .jc-addr, .draft-addr { font-size: .95rem; }
+  .jc-meta { font-size: .88rem; }
+  .flag-chip { font-size: .8rem; padding: .18rem .45rem; }
+  .flag { min-height: 44px; font-size: .88rem; padding: 0 .7rem; }
+  .mini-flag { width: 44px; min-height: 44px; font-size: 1.15rem; }
+  .jc-btns { gap: .35rem; flex-wrap: wrap; }
+  .jc-btns .btn.thin, .jc-btns .today-btn { min-height: 44px; font-size: .9rem; }
+  .col-list.two-up { columns: 1; }
+  .tap-field { min-width: 4rem; padding: .3rem .4rem; border-color: var(--line); }
+  .pk input { min-height: 44px; }
+  .d2-price { font-size: 1rem; }
+}
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }

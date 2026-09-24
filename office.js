@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 8: tab badges refresh)
+// J EMPIRE SERVER — office.js (version 9: letterhead invoice for private clients)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -439,6 +439,7 @@
             <button class="btn ghost danger" id="ovDelete">Delete</button>
             <button class="btn ghost" id="ovClose">Close</button>
             <button class="btn ghost" id="ovPrint">Save &amp; Print</button>
+            <button class="btn ghost" id="ovLetter">Print letterhead</button>
             <button class="btn" id="ovSave">Save changes</button>
           </div>
         </div>`;
@@ -460,6 +461,10 @@
       byId("ovClose").onclick = () => { back.hidden = true; back.innerHTML = ""; };
       byId("ovSave").onclick = () => save(false);
       byId("ovPrint").onclick = () => save(true);
+      byId("ovLetter").onclick = async () => {
+        if (inv.grp === "Jean" && !confirm("Jean's invoices are normally plain with no logo. Print the letterhead version anyway?")) return;
+        await save(false, null, true);
+      };
       if (byId("ovPay")) byId("ovPay").onclick = async () => {
         const d = byId("ovPaidOn").value; if (!d) { J().toast("Pick the date it was paid"); return; }
         await save(false, { status: "Paid", paid_on: d });
@@ -473,7 +478,7 @@
         J().toast(error ? "Not deleted: " + error.message : "Invoice deleted"); drawInvoices();
       };
     };
-    async function save(andPrint, statusPatch) {
+    async function save(andPrint, statusPatch, letterhead) {
       let n = 0;
       const lines = st.lines.map((l) => ({ ...l, n: ++n }))
         .concat(st.extras.filter((l) => l.name.trim() || Number(l.price)).map((l) => ({ ...l, n: ++n, extra: true, section: "Extra charges", name: l.name.trim() || "Extra charge" })));
@@ -486,7 +491,9 @@
       back.hidden = true; back.innerHTML = "";
       J().toast(statusPatch && statusPatch.status === "Paid" ? "Marked paid ✓" : "Invoice updated");
       await drawInvoices();
-      if (andPrint) printInvoice(data);
+      for (let t = 0; t < 50 && !byId("printSheet"); t++) await new Promise((r) => setTimeout(r, 100));
+      if (letterhead) printLetterhead(data, lastD ? lastD.settings : {});
+      else if (andPrint) printInvoice(data);
     }
     draw();
   }
@@ -536,6 +543,8 @@
           <label>Weekly goal<input inputmode="decimal" id="sGoal" value="${goal}"></label>
         </div>
         <label>Home address (route start)<input id="sHome" value="${esc(D.settings.home_address || "")}"></label>
+        <label>Letterhead contact line (private invoices)<input id="sContact" value="${esc((D.settings.letterhead || {}).contact || "")}" placeholder="Phone · Email · St. Cloud, FL"></label>
+        <label>Letterhead payment terms<input id="sTerms" value="${esc((D.settings.letterhead || {}).terms || "")}" placeholder="Thank you. Payment accepted by Zelle, Cash App, or check payable to Jazmin Aguayo."></label>
         <button class="btn" id="sSave">Save settings</button>
         <p class="muted small">Any job still at $0 that isn't on an invoice automatically picks up its client's default price. You can still change any single job.</p>
       </details>`;
@@ -584,7 +593,8 @@
       const rows = [
         { key: "default_prices", value: dp },
         { key: "weekly_goal", value: Number(byId("sGoal").value) || 500 },
-        { key: "home_address", value: byId("sHome").value.trim() }
+        { key: "home_address", value: byId("sHome").value.trim() },
+        { key: "letterhead", value: { contact: byId("sContact").value.trim(), terms: byId("sTerms").value.trim(), due: "On receipt" } }
       ];
       const { error } = await J().db.from("jes_settings").upsert(rows);
       try { localStorage.removeItem("jes_home_ll"); } catch (e) {}
@@ -725,6 +735,65 @@
   }
 
   // ---------- plain printed invoice (black ink) ----------
+  // ---------- letterhead invoice (private clients + notary work) ----------
+  const SEAL_SVG = `<svg class="lh-seal" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" aria-label="J Empire seal">
+    <defs><path id="lhT" d="M 27,110 a 83,83 0 0,1 166,0"/><path id="lhB" d="M 21,110 a 89,89 0 0,0 178,0"/></defs>
+    <circle cx="110" cy="110" r="105" fill="#fff" stroke="#000" stroke-width="3"/>
+    <circle cx="110" cy="110" r="98" fill="none" stroke="#000" stroke-width="1.2"/>
+    <circle cx="110" cy="110" r="70" fill="none" stroke="#000" stroke-width="1.6"/>
+    <circle cx="110" cy="110" r="66" fill="none" stroke="#000" stroke-width="0.8"/>
+    <text font-family="Cormorant Garamond, Georgia, serif" font-size="14" font-weight="700" letter-spacing="4" fill="#000"><textPath href="#lhT" startOffset="50%" text-anchor="middle">LEGAL SERVICES</textPath></text>
+    <text font-family="Cormorant Garamond, Georgia, serif" font-size="13" font-weight="700" letter-spacing="3" fill="#000"><textPath href="#lhB" startOffset="50%" text-anchor="middle">PROCESS SERVING · NOTARY</textPath></text>
+    <circle cx="27" cy="110" r="3" fill="#000"/><circle cx="193" cy="110" r="3" fill="#000"/>
+    <g transform="translate(116,66) scale(0.55)"><path d="M-18 6 L-20 -10 L-9 -1 L0 -16 L9 -1 L20 -10 L18 6 Z" fill="#000"/><rect x="-18" y="7" width="36" height="4" fill="#000"/><circle cx="-20" cy="-11" r="2.6" fill="#000"/><circle cx="0" cy="-17" r="2.6" fill="#000"/><circle cx="20" cy="-11" r="2.6" fill="#000"/></g>
+    <text x="110" y="128" text-anchor="middle" font-family="Pinyon Script, cursive" font-size="58" fill="#000">J</text>
+    <line x1="78" y1="142" x2="142" y2="142" stroke="#000" stroke-width="1.2"/>
+    <path d="M110 138.5 L113.5 142 L110 145.5 L106.5 142 Z" fill="#000"/>
+    <text x="110" y="162" text-anchor="middle" font-family="Cormorant Garamond, Georgia, serif" font-weight="700" font-size="14" letter-spacing="5" fill="#000">EMPIRE</text>
+  </svg>`;
+
+  function printLetterhead(inv, settings) {
+    const { esc, money } = J();
+    const st = (settings && settings.letterhead) || {};
+    const jl = jobLines(inv), ex = extraLines(inv);
+    const jobById = {};
+    (lastD ? lastD.jobs : []).forEach((j) => { jobById[j.id] = j; });
+    byId("printSheet").innerHTML = `
+      <div class="lh">
+        <div class="lh-head">
+          <div class="lh-brand">${SEAL_SVG}
+            <div><div class="lh-me">Jazmin Aguayo</div>
+              <div class="lh-tag">Process Serving · Notary</div>
+              <div class="lh-contact">${esc(st.contact || "")}</div></div>
+          </div>
+          <div class="lh-right"><div class="lh-word">INVOICE</div>
+            <div class="lh-meta"><span>Invoice #</span><b>${esc(inv.inv_no || "")}</b>
+              <span>Date</span><b>${esc(mdy(new Date()))}</b>
+              <span>Due</span><b>${esc(st.due || "On receipt")}</b></div>
+          </div>
+        </div>
+        <div class="lh-blocks">
+          <div><div class="lh-label">Bill to</div><div>${esc(inv.bill_to || "")}</div></div>
+          <div><div class="lh-label">Period</div><div>${esc(inv.period_start ? periodLabel(fromIso(inv.period_start), fromIso(inv.period_end)) : "")}</div></div>
+        </div>
+        <table class="lh-table">
+          <thead><tr><th>Date served</th><th>Job / case #</th><th>Person or company served</th><th class="amt">Amount</th></tr></thead>
+          <tbody>
+            ${jl.map((l) => { const j = jobById[l.job_id];
+              return `<tr><td>${esc(j && j.done_at ? md(j.done_at) : "")}</td><td>${esc(l.job_no || "")}</td><td>${esc(l.name || l.address || "")}</td><td class="amt">${money(l.price)}</td></tr>`; }).join("")}
+            ${ex.map((l) => `<tr><td></td><td></td><td>${esc(l.name)}</td><td class="amt">${money(l.price)}</td></tr>`).join("")}
+          </tbody>
+        </table>
+        <div class="lh-totals">
+          <div class="lh-trow"><span>Service total</span><b>${money(jl.reduce((a, l) => a + Number(l.price || 0), 0))}</b></div>
+          ${ex.length ? `<div class="lh-trow"><span>Extra charges</span><b>${money(ex.reduce((a, l) => a + Number(l.price || 0), 0))}</b></div>` : ""}
+          <div class="lh-trow lh-due"><span>Amount Due</span><span>${money(inv.total)}</span></div>
+        </div>
+        <div class="lh-foot">${esc(st.terms || "Thank you. Payment accepted by Zelle, Cash App, or check payable to Jazmin Aguayo.")}</div>
+      </div>`;
+    window.print();
+  }
+
   function printInvoice(inv) {
     const { esc, money } = J();
     const sections = [...new Set((inv.lines || []).filter((l) => !l.extra).map((l) => l.section))];
