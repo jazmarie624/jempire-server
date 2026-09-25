@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 11: waiting-on-papers reminders)
+// J EMPIRE SERVER — app.js (version 12: word-only tabs)
 (function () {
   "use strict";
 
@@ -49,12 +49,12 @@
   // Tabs follow the order you actually work: add → check → route → verify → bill → money
   const TABS = [
     { id: "home",     label: "Home" },
-    { id: "add",      label: "1 Add Jobs" },
-    { id: "jobs",     label: "2 Jobs" },
-    { id: "route",    label: "3 Route" },
-    { id: "done",     label: "4 Done" },
-    { id: "invoices", label: "5 Invoices" },
-    { id: "money",    label: "6 Money" }
+    { id: "add",      label: "Add Jobs" },
+    { id: "jobs",     label: "Jobs" },
+    { id: "route",    label: "Route" },
+    { id: "done",     label: "Done" },
+    { id: "invoices", label: "Invoices" },
+    { id: "money",    label: "Money" }
   ];
   // iPhone bottom bar keeps it short; steps 4–6 live under "Office"
   const PHONE_TABS = [

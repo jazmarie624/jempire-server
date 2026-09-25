@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 10: Route confirmation + undo, pins fanned out)
+// J EMPIRE SERVER — jobs.js (version 11: warnings on top, smaller cards, number pads)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -84,11 +84,10 @@
       <div class="jcard ${cls}">
         <div class="jc-top">
           <span class="tap-field name" contenteditable data-jf="person" data-id="${j.id}" data-ph="${esc(j.address ? j.address.split(",")[0] : "tap to add name")}">${esc(j.person || "")}</span>
-          <span class="tap-field jobno" contenteditable data-jf="job_no" data-id="${j.id}" data-ph="job #">${esc(j.job_no || "")}</span>
+          <span class="tap-field jobno" contenteditable inputmode="numeric" data-jf="job_no" data-id="${j.id}" data-ph="job #">${esc(j.job_no || "")}</span>
         </div>
         <div class="jc-addr">${red ? `<b>${esc(P().problems(j).join(" · "))}</b>${j.address ? " · " : ""}` : ""}${esc(j.address || "")}</div>
-        <div class="jc-meta">${esc(j.client || "")}${j.county ? " · " + esc(j.county) : ""}${j.attempt_count && !isDone(j) ? ` · Att ${j.attempt_count}/5` : ""}${j.due_date && !isDone(j) ? ` · Due ${esc(fmtDate(j.due_date).slice(0, 5))}` : ""} · <b>${money(j.price)}</b></div>
-        ${flagChips(j) ? `<div class="chip-row">${flagChips(j)}</div>` : ""}
+        <div class="jc-meta">${esc(j.client || "")}${j.attempt_count && !isDone(j) ? ` · ${j.attempt_count}/5` : ""}${j.due_date && !isDone(j) ? ` · ${esc(fmtDate(j.due_date).slice(0, 5))}` : ""} · <b>${money(j.price)}</b> ${flagChips(j)}</div>
         <div class="jc-btns">
           ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
           ${wait ? `<button class="today-btn paper-btn" data-gotpaper="${j.id}">📄 Got papers</button>` : ""}
@@ -273,15 +272,15 @@
           <label>Status<select id="g_status">${opt(["Active", "On Hold", "Served", "Non-Serve Complete"], j.status)}</select></label>
           <label>Standard / Rush<select id="g_service">${opt(["Standard", "Rush"], j.service)}</select></label>
           <label>Client<select id="g_client">${opt(P().CLIENTS, j.client)}</select></label>
-          <label>Job #<input id="g_job_no" value="${esc(j.job_no || "")}"></label>
+          <label>Job #<input id="g_job_no" inputmode="numeric" value="${esc(j.job_no || "")}"></label>
         </div>
         <label>Person to serve<input id="g_person" value="${esc(j.person || "")}"></label>
         <label>Address<textarea id="g_address" rows="2">${esc(j.address || "")}</textarea></label>
         <div class="grid2">
           <label>County<select id="g_county">${opt(["", "Osceola", "Orange", "Other"], j.county || "")}</select></label>
           <label>Due date<input id="g_due_date" type="date" value="${esc(j.due_date || "")}"></label>
-          <label>Price<input id="g_price" inputmode="decimal" value="${esc(j.price ?? 0)}"></label>
-          <label>Attempts<input id="g_attempt_count" inputmode="numeric" value="${esc(j.attempt_count || 0)}"></label>
+          <label>Price<input id="g_price" inputmode="decimal" placeholder="$" value="${j.price ? esc(j.price) : ""}"></label>
+          <label>Attempts<input id="g_attempt_count" inputmode="numeric" placeholder="0" value="${j.attempt_count ? esc(j.attempt_count) : ""}"></label>
         </div>
         <label>Notes<textarea id="g_notes" class="notes-box" rows="5">${esc(j.notes || "")}</textarea></label>
         <div class="toggle-list">
@@ -482,6 +481,7 @@
           <h1>Today's Route</h1>
           <div class="seg" id="rCounty">${["Osceola", "Orange"].map((c) => `<button class="${c === RS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
+        <div id="rMsg"></div>
         ${RS.started ? `<div class="route-live">● Route in progress — stops re-sort from where you are after each one</div>` : ""}
         <div id="rNear" class="near-wrap"></div>
         <div id="rDid"></div>
@@ -499,7 +499,7 @@
               <button class="btn ghost" id="rBest">Re-sort (save gas)</button>
               <button class="btn ghost" id="rPrint">Print</button>
             </div>
-            <div id="rMsg"></div>
+
           </div>
           <div class="route-listcol">
             <div id="rStops" class="stops"><p class="muted">Loading…</p></div>

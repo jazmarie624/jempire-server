@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 10: one-tap Checked, ready-to-bill jobs on Invoices)
+// J EMPIRE SERVER — office.js (version 11: smaller Done cards, number pads, no sideways invoice)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -75,10 +75,9 @@
     const card = (j) => `
       <div class="dcard ${checked(j) ? "all-ok" : ""}">
         <div class="jc-name">${esc(who(j))}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
-        <div class="jc-addr">${esc(j.address || "")}</div>
         <div class="jc-meta">${esc(j.client || "")} · <span class="tag done">${j.status === "Served" ? "Served" : "Non-serve"}</span> ${j.done_at ? esc(md(j.done_at)) : ""}${j.invoice_id ? ` · <span class="tag">On invoice</span>` : ""}</div>
         <div class="jc-btns">
-          <label class="price-in">$<input inputmode="decimal" data-price="${j.id}" value="${Number(j.price || 0).toFixed(2)}" aria-label="Price" ${j.invoice_id ? "disabled" : ""}></label>
+          <label class="price-in">$<input inputmode="decimal" placeholder="—" data-price="${j.id}" value="${j.price ? Number(j.price).toFixed(2) : ""}" aria-label="Price" ${j.invoice_id ? "disabled" : ""}></label>
           ${checked(j)
             ? `<button class="btn ghost thin" data-uncheck="${j.id}">Undo check</button>`
             : `<button class="btn go thin" data-check="${j.id}">Checked ✓</button>`}
@@ -316,7 +315,7 @@
                 <div class="rp-top">
                   <span class="il-no">#${esc(r.job_no)}</span>
                   <span class="rp-mid"><span class="jc-name">${esc(j ? (j.person || "(no name)") : "New job")}</span><span class="rp-note">${esc(note)}</span></span>
-                  <label class="price-in">$<input inputmode="decimal" data-amt="${k}" value="${Number(r.amount).toFixed(2)}" aria-label="Amount paid for ${esc(r.job_no)}"></label>
+                  <label class="price-in">$<input inputmode="decimal" placeholder="$" data-amt="${k}" value="${Number(r.amount).toFixed(2)}" aria-label="Amount paid for ${esc(r.job_no)}"></label>
                 </div>${choice}
               </div>`;
             }).join("")}</div>
@@ -432,7 +431,7 @@
                 <span class="il-n">${++n}.</span>
                 <span class="il-no">${esc(l.job_no ? "#" + l.job_no : "no job #")}</span>
                 <span class="il-name">${esc(l.name)}</span>
-                <label class="price-in">$<input inputmode="decimal" data-lp="${k}" value="${Number(l.price || 0).toFixed(2)}" aria-label="Price for ${esc(l.name)}"></label>
+                <label class="price-in">$<input inputmode="decimal" placeholder="$" data-lp="${k}" value="${l.price ? Number(l.price).toFixed(2) : ""}" aria-label="Price for ${esc(l.name)}"></label>
                 <button class="icon-btn small-x" data-rm="${k}" aria-label="Take ${esc(l.name)} off this invoice">✕</button>
               </div>`).join("")).join("")}
             <div class="inv-sec">Extra charges</div>
@@ -440,7 +439,7 @@
               <div class="ov-line">
                 <span class="il-n">+</span>
                 <input class="ex-desc" data-ed="${k}" value="${esc(l.name)}" placeholder="What for (extra stop, printing…)" aria-label="Extra charge description">
-                <label class="price-in">$<input inputmode="decimal" data-ep="${k}" value="${Number(l.price || 0).toFixed(2)}" aria-label="Extra charge amount"></label>
+                <label class="price-in">$<input inputmode="decimal" placeholder="$" data-ep="${k}" value="${l.price ? Number(l.price).toFixed(2) : ""}" aria-label="Extra charge amount"></label>
                 <button class="icon-btn small-x" data-erm="${k}" aria-label="Remove this extra charge">✕</button>
               </div>`).join("")}
             <button class="btn ghost thin" id="ovAddExtra">+ Add extra charge</button>
@@ -555,7 +554,7 @@
         <span>${money(e.amount)} <button class="icon-btn small-x" data-delexp="${e.id}" aria-label="Delete this cost">✕</button></span></div>`).join("")}</div>` : ""}
       <details class="settings"><summary>Settings: default prices, weekly goal, home address</summary>
         <div class="grid2">${["ABC Legal", "Ody's", "ProVest", "Userve", "Private"].map((c) => `
-          <label>${esc(c)} default price<input inputmode="decimal" data-dp="${esc(c)}" value="${Number((D.settings.default_prices || {})[c] || 0).toFixed(2)}"></label>`).join("")}
+          <label>${esc(c)} default price<input inputmode="decimal" placeholder="$" data-dp="${esc(c)}" value="${(D.settings.default_prices || {})[c] ? Number((D.settings.default_prices || {})[c]).toFixed(2) : ""}"></label>`).join("")}
           <label>Weekly goal<input inputmode="decimal" id="sGoal" value="${goal}"></label>
         </div>
         <label>Home address (route start)<input id="sHome" value="${esc(D.settings.home_address || "")}"></label>
@@ -684,7 +683,7 @@
                 <span class="pick-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
                 <span class="pick-sub">${esc(j.client)} · ${tag} · <span class="${verified(j) ? "ok" : "bad"}">${locked ? "on an invoice" : verified(j) ? "checked ✓" : "not checked"}</span></span>
               </label>
-              ${on ? `<label class="price-in">$<input inputmode="decimal" data-price="${j.id}" value="${priceOf(j).toFixed(2)}" aria-label="Price"></label>` : `<b class="pick-amt">${money(j.price)}</b>`}
+              ${on ? `<label class="price-in pick-price">$<input inputmode="decimal" placeholder="—" data-price="${j.id}" value="${priceOf(j) ? priceOf(j).toFixed(2) : ""}" aria-label="Price"></label>` : `<b class="pick-amt">${money(j.price)}</b>`}
             </div>`;
             };
             if (!pool.length) return `<p class="muted">No ${esc(st.grp)} jobs to show.</p>`;
@@ -699,7 +698,7 @@
             <div class="ov-line">
               <span class="il-n">+</span>
               <input class="ex-desc" data-ed="${k}" value="${esc(e.name)}" placeholder="What for (extra stop, printing…)" aria-label="Extra charge description">
-              <label class="price-in">$<input inputmode="decimal" data-ep="${k}" value="${Number(e.price || 0).toFixed(2)}" aria-label="Extra charge amount"></label>
+              <label class="price-in">$<input inputmode="decimal" placeholder="$" data-ep="${k}" value="${e.price ? Number(e.price).toFixed(2) : ""}" aria-label="Extra charge amount"></label>
               <button class="icon-btn small-x" data-erm="${k}" aria-label="Remove this extra charge">✕</button>
             </div>`).join("")}
           <button class="btn ghost thin" id="niAddExtra">+ Add extra charge</button>
@@ -846,7 +845,7 @@
         <div class="grid2">
           <label>Date<input type="date" id="exDay" value="${isoDay(new Date())}"></label>
           <label>Type<select id="exKind">${["Gas", "Tolls", "Parking", "Miles", "Other"].map((k) => `<option>${k}</option>`).join("")}</select></label>
-          <label>Amount ($)<input id="exAmt" inputmode="decimal" placeholder="0.00"></label>
+          <label>Amount ($)<input id="exAmt" inputmode="decimal" placeholder="$"></label>
           <label>Miles (optional)<input id="exMiles" inputmode="decimal" placeholder="0"></label>
         </div>
         <label>Note<input id="exNote" placeholder="Optional"></label>
