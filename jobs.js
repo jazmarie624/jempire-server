@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 11: warnings on top, smaller cards, number pads)
+// J EMPIRE SERVER — jobs.js (version 12: List view — one line per job)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -47,7 +47,7 @@
     { id: "hold",   short: "Hold",   title: "On hold",           sub: "Paused or has a problem",        test: (j) => j.status === "On Hold" }
   ];
   const FILTER_TO_COL = { "Needs address": "fix", "Papers": "papers", "Active": "ready", "Today": "today", "On Hold": "hold" };
-  const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", q: "", jobs: [], invs: {} };
+  const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", q: "", jobs: [], invs: {}, dense: localStorage.getItem("jes_dense") !== "cards" };
 
   async function drawJobs(opts) {
     if (opts && opts.filter && FILTER_TO_COL[opts.filter]) JS.col = FILTER_TO_COL[opts.filter];
@@ -56,6 +56,7 @@
       <section class="jobs">
         <div class="jobs-bar">
           <h1>Jobs</h1>
+          <div class="seg view-seg" id="jDense">${[["list", "List"], ["cards", "Cards"]].map(([v, t]) => `<button class="${(v === "list") === JS.dense ? "on" : ""}" data-d="${v}">${t}</button>`).join("")}</div>
           <div class="seg view-seg" id="jView">${[["working", "Working"], ["history", "History"]].map(([v, t]) => `<button class="${v === JS.view ? "on" : ""}" data-v="${v}">${t}</button>`).join("")}</div>
           <label class="sr" for="jq">Search jobs</label>
           <input id="jq" class="search" type="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
@@ -67,11 +68,37 @@
       <div class="sheet-back" id="sheetBack" hidden></div>`;
     byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
     byId("jq").oninput = (e) => { JS.q = e.target.value; drawList(); };
+    byId("jDense").onclick = (e) => {
+      const b = e.target.closest("[data-d]"); if (!b) return;
+      JS.dense = b.dataset.d === "list";
+      localStorage.setItem("jes_dense", JS.dense ? "list" : "cards");
+      drawJobs();
+    };
     byId("jView").onclick = (e) => { const b = e.target.closest("[data-v]"); if (b) { JS.view = b.dataset.v; drawJobs(); } };
     JS.jobs = await fetchJobs();
     const { data: invs } = await J().db.from("jes_invoices").select("id,grp,status,paid_on,period_start,period_end");
     JS.invs = {}; (invs || []).forEach((i) => { JS.invs[i.id] = i; });
     drawList();
+  }
+
+  function jobLine(j) {
+    const { esc, money } = J();
+    const red = !isDone(j) && needsAddress(j);
+    const wait = waitingPapers(j);
+    const cls = red ? "is-red" : wait ? "is-hold" : j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
+    const marks = [
+      j.service === "Rush" ? `<span class="m rush">⚡</span>` : "",
+      j.is_foreclosure ? `<span class="m fore">📚${(j.packets || 1) > 1 ? j.packets : ""}</span>` : "",
+      j.is_business ? `<span class="m biz">🏢</span>` : "",
+      wait ? `<span class="m pap">📄</span>` : ""
+    ].join("");
+    const title = j.person || (j.address ? j.address.split(",")[0] : "(no name)");
+    return `<div class="jline ${cls}" data-open="${j.id}" role="button" tabindex="0">
+      <span class="jl-main"><b>${esc(title)}</b>${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}${j.person && j.address ? ` <span class="jl-addr">${esc(j.address.split(",")[0])}</span>` : ""}</span>
+      <span class="jl-marks">${marks}</span>
+      <span class="jl-amt">${j.price ? money(j.price) : "—"}</span>
+      ${j.status === "Active" && !red && !wait ? `<button class="jl-today ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today">${j.on_today ? "✓" : "+"}</button>` : ""}
+    </div>`;
   }
 
   function jobCard(j) {
@@ -180,7 +207,7 @@
       // Searching in Working shows one list across everything, including finished jobs
       byId("jColPick").innerHTML = "";
       const hits = JS.jobs.filter((j) => byCounty(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
-      body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(jobCard).join("") || ""}</div>`;
+      body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(JS.dense ? jobLine : jobCard).join("") || ""}</div>`;
     } else {
       const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && c.test(j)).sort(sortJobs) }));
       byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.short} <b>${jobs.length}</b></button>`).join("");
@@ -188,13 +215,16 @@
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
           <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
           ${c.id === "papers" && jobs.length ? `<button class="btn go thin" data-pickup="1">📄 Got papers from Jean</button>` : ""}
-          <div class="col-list ${jobs.length > 7 ? "two-up" : ""}">${jobs.length ? jobs.map(jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
+          <div class="col-list ${jobs.length > 7 ? "two-up" : ""}">${jobs.length ? jobs.map(JS.dense ? jobLine : jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
         </div>`).join("")}</div>
         <p class="muted small center">Finished and paid jobs are in <b>History</b> (switch at the top).</p>`;
       byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-col]"); if (b) { JS.col = b.dataset.col; drawList(); } };
     }
     wireCards(body, drawList);
-    body.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs));
+    body.querySelectorAll("[data-open]").forEach((b) => b.onclick = (e) => {
+      if (e.target.closest("[data-today]")) return;
+      openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs);
+    });
     body.querySelectorAll("[data-gotpaper]").forEach((b) => b.onclick = async () => {
       if (await updateJob(b.dataset.gotpaper, { has_papers: true })) { J().toast("Papers in hand ✓ — ready to route"); J().refreshBadges && J().refreshBadges(); drawJobs(); }
     });

@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — office.js (version 11: smaller Done cards, number pads, no sideways invoice)
+// J EMPIRE SERVER — office.js (version 12: Done in one-line rows)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -72,6 +72,14 @@
       { id: "billed", title: "Billed", sub: "Lands here once the invoice is made", jobs: done.filter((j) => checked(j) && billed(j) && new Date(j.done_at || 0).getTime() > monthAgo) }
     ];
     const who = (j) => j.person || (j.address ? j.address.split(",")[0] : "(no name)");
+    const line = (j) => `
+      <div class="jline ${checked(j) ? "is-green" : "is-red"}">
+        <span class="jl-main"><b>${esc(who(j))}</b>${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} <span class="jl-addr">${esc(j.client || "")} · ${j.status === "Served" ? "Served" : "Non-serve"} ${j.done_at ? esc(md(j.done_at)) : ""}</span></span>
+        <label class="price-in jl-price">$<input inputmode="decimal" placeholder="—" data-price="${j.id}" value="${j.price ? Number(j.price).toFixed(2) : ""}" aria-label="Price" ${j.invoice_id ? "disabled" : ""}></label>
+        ${checked(j) ? `<button class="jl-chk on" data-uncheck="${j.id}" aria-label="Undo check">✓</button>`
+                     : `<button class="jl-chk" data-check="${j.id}" aria-label="Mark checked">✓</button>`}
+        <button class="jl-open" data-open="${j.id}" aria-label="Open job">›</button>
+      </div>`;
     const card = (j) => `
       <div class="dcard ${checked(j) ? "all-ok" : ""}">
         <div class="jc-name">${esc(who(j))}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
@@ -89,7 +97,7 @@
     byId("dBody").innerHTML = `<div class="job-cols three">${COLS.map((c) => `
       <div class="job-col done-${c.id} ${c.id === doneCol ? "phone-on" : ""}">
         <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${c.jobs.length}</span></div>
-        <div class="col-list">${c.jobs.length ? c.jobs.map(card).join("") : `<p class="muted small center">${c.id === "check" ? "All checked ✓" : "Nothing here."}</p>`}</div>
+        <div class="col-list">${c.jobs.length ? c.jobs.map(line).join("") : `<p class="muted small center">${c.id === "check" ? "All checked ✓" : "Nothing here."}</p>`}</div>
       </div>`).join("")}</div>`;
     const findJ = (id) => D.jobs.find((j) => j.id === id);
     const body = byId("dBody");

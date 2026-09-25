@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 25: half-height cards, one-page screens) */
+/* J EMPIRE SERVER — style.css (version 26: List view rows) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -744,6 +744,37 @@ input[type="date"] { min-width: 0; width: 100%; -webkit-appearance: none; appear
   .jc-btns .mini-flag { width: 42px; min-height: 42px; }
   .jc-btns .price-in input { min-height: 42px; width: 5.4rem; font-size: .95rem; }
   .pick-price { margin-left: 2.1rem; }
+}
+
+
+/* ================= List view: one line per job ================= */
+.jline {
+  display: flex; align-items: center; gap: .4rem;
+  background: #fff; border: 1px solid var(--line); border-left: 5px solid var(--line);
+  border-radius: 8px; padding: .28rem .4rem; min-height: 38px; cursor: pointer; width: 100%; text-align: left;
+}
+.jline.is-red { border-left-color: var(--red); background: var(--red-bg); }
+.jline.is-green { border-left-color: var(--green); }
+.jline.is-hold { border-left-color: var(--gold); }
+.jline.is-done { border-left-color: var(--navy); opacity: .9; }
+.jl-main { flex: 1; min-width: 0; font-size: .86rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jl-addr { color: var(--navy-2); font-weight: 500; }
+.jl-marks { flex-shrink: 0; display: flex; gap: .1rem; font-size: .8rem; }
+.jl-amt { flex-shrink: 0; font-weight: 700; font-size: .82rem; min-width: 3.4rem; text-align: right; }
+.jl-today, .jl-chk, .jl-open {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--paper); font-weight: 700; font-size: .95rem; color: var(--navy);
+}
+.jl-today.on, .jl-chk.on { background: var(--green); border-color: var(--green); color: #fff; }
+.jl-chk { border-color: var(--green); color: var(--green); }
+.jl-price input { width: 4.4rem; min-height: 32px; font-size: .82rem; padding: 0 .3rem; }
+.jl-price { flex-shrink: 0; font-size: .82rem; }
+@media (max-width: 899px) {
+  .jline { min-height: 48px; padding: .35rem .5rem; }
+  .jl-main { font-size: .95rem; }
+  .jl-amt { font-size: .92rem; }
+  .jl-today, .jl-chk, .jl-open { width: 40px; height: 40px; }
+  .jl-price input { min-height: 40px; width: 5rem; font-size: .92rem; }
 }
 
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
