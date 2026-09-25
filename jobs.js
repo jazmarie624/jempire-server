@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 12: List view — one line per job)
+// J EMPIRE SERVER — jobs.js (version 13: two-line rows — flags first, address under the name)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -85,18 +85,20 @@
     const { esc, money } = J();
     const red = !isDone(j) && needsAddress(j);
     const wait = waitingPapers(j);
-    const cls = red ? "is-red" : wait ? "is-hold" : j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
+    const cls = red ? "is-red" : wait || j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
     const marks = [
-      j.service === "Rush" ? `<span class="m rush">⚡</span>` : "",
-      j.is_foreclosure ? `<span class="m fore">📚${(j.packets || 1) > 1 ? j.packets : ""}</span>` : "",
-      j.is_business ? `<span class="m biz">🏢</span>` : "",
-      wait ? `<span class="m pap">📄</span>` : ""
-    ].join("");
+      j.service === "Rush" ? `<span class="m rush">⚡ RUSH</span>` : "",
+      j.is_foreclosure ? `<span class="m fore">📚 ${(j.packets || 1) > 1 ? "×" + j.packets : "FORECL"}</span>` : "",
+      j.is_business ? `<span class="m biz">🏢 10–12 / 2–4</span>` : "",
+      wait ? `<span class="m pap">📄 NO PAPERS</span>` : "",
+      j.status === "On Hold" ? `<span class="m hold">⏸ HOLD</span>` : ""
+    ].filter(Boolean).join("");
     const title = j.person || (j.address ? j.address.split(",")[0] : "(no name)");
     return `<div class="jline ${cls}" data-open="${j.id}" role="button" tabindex="0">
-      <span class="jl-main"><b>${esc(title)}</b>${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}${j.person && j.address ? ` <span class="jl-addr">${esc(j.address.split(",")[0])}</span>` : ""}</span>
-      <span class="jl-marks">${marks}</span>
-      <span class="jl-amt">${j.price ? money(j.price) : "—"}</span>
+      <span class="jl-body">
+        <span class="jl-row1">${marks}<b class="jl-name">${esc(title)}</b>${j.job_no ? `<span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
+        <span class="jl-row2">${red ? `<b class="bad">${esc(P().problems(j).join(" · "))}</b> ` : ""}${esc(j.address || "no address yet")}<span class="jl-tail"> · ${esc(j.client || "")}${j.attempt_count && !isDone(j) ? ` · att ${j.attempt_count}/5` : ""}${j.price ? ` · ${money(j.price)}` : ""}</span></span>
+      </span>
       ${j.status === "Active" && !red && !wait ? `<button class="jl-today ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today">${j.on_today ? "✓" : "+"}</button>` : ""}
     </div>`;
   }
