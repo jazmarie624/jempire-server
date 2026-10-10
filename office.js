@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 22: J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 23: paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 22 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 23 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
@@ -482,18 +482,25 @@
 
     document.querySelectorAll("[data-paid]").forEach((inp) => inp.onchange = async () => {
       const v = num(inp.value);
-      await J().db.from("jes_jobs").update({ paid_amount: v, paid_on: v == null ? null : todayISO() })
+      const { error } = await J().db.from("jes_jobs").update({ paid_amount: v, paid_on: v == null ? null : todayISO() })
         .eq("id", inp.getAttribute("data-paid"));
+      if (error) { J().toast("Not saved: " + error.message); return; }
       await load(); await syncSheetPaid(sheetId); openTracker(sheetId);
     });
     document.querySelectorAll("[data-pay]").forEach((b) => b.onclick = async () => {
       const id = b.getAttribute("data-pay");
       const j = O.jobs.find((x) => x.id === id);
+      if (!j) { J().toast("Couldn't find that job — reload and try again"); return; }
       const already = j.paid_amount != null;
-      await J().db.from("jes_jobs").update({
-        paid_amount: already ? null : Number(j.billed || 0),
+      // Fall back to the price if the frozen amount somehow never got written
+      const amount = Number(j.billed != null ? j.billed : j.price || 0);
+      if (!already && !amount) { J().toast("That line has no amount on it — type the price in first"); return; }
+      const { error } = await J().db.from("jes_jobs").update({
+        paid_amount: already ? null : amount,
         paid_on: already ? null : todayISO()
       }).eq("id", id);
+      if (error) { J().toast("Not saved: " + error.message); return; }
+      J().toast(already ? "Marked unpaid" : "Paid " + J().money(amount) + " ✓");
       await load(); await syncSheetPaid(sheetId); openTracker(sheetId);
     });
     document.querySelectorAll("[data-job]").forEach((s) => s.onclick = () =>
@@ -501,7 +508,11 @@
     byId("tPrint").onclick = () => printForJean(sheet, ls.map((j) => Object.assign({}, j, { price: j.billed })), billedTotal);
     byId("tAll").onclick = async () => {
       if (!confirm(`Mark all ${ls.length} jobs paid in full?`)) return;
-      for (const j of ls) await J().db.from("jes_jobs").update({ paid_amount: Number(j.billed || 0), paid_on: todayISO() }).eq("id", j.id);
+      for (const j of ls) {
+        const amt = Number(j.billed != null ? j.billed : j.price || 0);
+        const { error } = await J().db.from("jes_jobs").update({ paid_amount: amt, paid_on: todayISO() }).eq("id", j.id);
+        if (error) { J().toast("Not saved: " + error.message); break; }
+      }
       await load(); await syncSheetPaid(sheetId); openTracker(sheetId);
     };
     byId("tPaste").onclick = () => pastePayReport(sheetId);
