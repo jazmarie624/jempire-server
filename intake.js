@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 20: papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 21: handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -359,7 +359,32 @@
       cur.notes = cur.notes ? cur.notes + " · " + l : l;
     });
     push();
+    spreadColumns(out, ls);
     return out;
+  }
+
+  // Sometimes the portal copies column-by-column: every job first, then a run
+  // of Due dates, then a run of Routine/Attempts lines. When the counts line
+  // up, hand them back out in order so nobody loses their deadline.
+  function spreadColumns(out, ls) {
+    if (out.length < 2) return;
+    const dues = [], types = [], atts = [];
+    ls.forEach((l) => {
+      let m;
+      if (/^due\s*:/i.test(l)) { if ((m = l.match(DATE))) dues.push(toIsoDate(m)); return; }
+      if (/^(routine|standard|regular|rush|priority|expedited?|same.?day|asap)$/i.test(l)) { types.push(l); return; }
+      if (/^attempts?\s*:/i.test(l)) { const a = l.match(/(\d+)/); atts.push(a ? Number(a[1]) : 0); }
+    });
+    if (dues.length === out.length && out.some((d) => !d.due_date)) {
+      out.forEach((d, i) => { d.due_date = dues[i]; });
+    }
+    if (types.length === out.length) {
+      out.forEach((d, i) => {
+        d.job_type = titleCase(types[i]);
+        d.service = /rush|priorit|expedit|same|asap/i.test(types[i]) ? "Rush" : "Standard";
+      });
+    }
+    if (atts.length === out.length) out.forEach((d, i) => { d.attempt_count = atts[i]; });
   }
 
   // "due in 22hrs" / "due in 2d 4h" / "by 8AM Sunday" -> a real date on the job
