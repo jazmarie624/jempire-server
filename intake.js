@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 26: drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 27: papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 26 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 27 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -94,7 +94,7 @@
   function blankDraft(client) {
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
-      has_papers: true,   // always starts checked — uncheck the ones you don't have yet
+      has_papers: false,  // starts OFF — tick it as the papers come in hand
       is_foreclosure: false, packets: 1, is_business: false, on_hold: false, job_type: "", attempt_count: 0 };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
@@ -913,6 +913,7 @@
     if (!S.drafts.length) { area.innerHTML = ""; return; }
     area.innerHTML = `
       <label class="check-line"><input type="checkbox" id="inToday" ${S.addToday ? "checked" : ""}> Also add to Today's route</label>
+      <p class="muted small center">Only jobs with <b>📄 Papers in hand</b> ticked go on a route. The rest wait in <b>Need papers printed</b> or <b>Waiting on Jean</b>.</p>
       <button class="btn go" id="inSave" ${savable ? "" : "disabled"}>Save ${savable} Job${savable === 1 ? "" : "s"}</button>
       ${red ? `<p class="muted small center">Red jobs can still be saved — you'll be asked what to do with them.</p>` : ""}
       ${dups ? `<button class="btn ghost" id="inDropDups">✕ Clear the ${dups} duplicate${dups === 1 ? "" : "s"}</button>
