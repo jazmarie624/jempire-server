@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 22: one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 23: ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 22 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 23 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -243,10 +243,30 @@
 
   // ---------- ProVest ----------
   const PROVEST_JUNK = /^(saved|all work|corporate|q\s*search|search|include closed cases|my work|open|filters?|sort)$/i;
+  // "Leanne Savion 318 W Bass St #202, Kissimmee, FL 34741"
+  //  -> person "Leanne Savion", address "318 W Bass St #202, ..."
+  function splitNameAddr(l) {
+    const m = String(l).match(/^(.*?)(\d{1,6}[A-Za-z]?\s+\S.*)$/);
+    if (!m || !m[1].trim()) return { person: "", addr: l };
+    return { person: titleCase(m[1].trim().replace(/[,\-–\s]+$/, "")), addr: m[2] };
+  }
+
+  // How many whole addresses are sitting in one string
+  function splitAddresses(a) {
+    const parts = [];
+    const re = /(.*?\b(?:FL|Florida)\b[\s,]*\d{5}(?:-\d{4})?)/gi;
+    let m, last = 0;
+    while ((m = re.exec(String(a || "")))) { parts.push(m[1].replace(/^[\s,]+/, "")); last = re.lastIndex; }
+    const tail = String(a || "").slice(last).replace(/^[\s,]+/, "");
+    if (tail.trim()) parts.push(tail);
+    return parts.filter((x) => x.trim());
+  }
+  const addressCount = (a) => (String(a || "").match(/\b(?:FL|Florida)\b[\s,]*\d{5}/gi) || []).length;
+
   function parseProVest(text, extra) {
     const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l) && !/^\(?[o0]\)?[.,]?$/i.test(l));
     const isCO = (l) => /^(c\/o|c\.o\.|attn|attention)\b/i.test(l);
-    const isRe = (l) => /^re\s*:/i.test(l);
+    const isRe = (l) => /^re\b\s*:?\s*\d/i.test(l);   // "Re: 1056 ..." or "Re 2734 ..."
     const out = [];
     let cur = null;
     const start = (raw, kind, person) => { cur = { raw, addr: raw, kind: kind || "", person: person || "" }; out.push(cur); };
@@ -255,13 +275,26 @@
         // "C/O Rftax Llc 3300 Greenwald Way N Kissimmee, FL 34741" — company, then the address
         const body = l.replace(/^(c\/o|c\.o\.|attn|attention)\s*:?\s*/i, "");
         const m = body.match(/^(.*?)(\d{1,6}[A-Za-z]?\s+.*)$/);
-        start(m ? m[2] : body, "Registered agent (C/O)", m ? titleCase(m[1].trim()) : "");
+        // Address on the same line? Split it. No address? The whole line is the
+        // company name and the address lands on the next line.
+        if (m) start(m[2], "Registered agent (C/O)", titleCase(m[1].trim()));
+        else start("", "Registered agent (C/O)", titleCase(body));
         return;
       }
-      if (isRe(l)) { start(l.replace(/^re\s*:\s*/i, ""), "Property address (Re:)", ""); return; }
-      if (STREET_START.test(l) && (!cur || hasZip(cur.addr))) { start(l); return; }
+      if (isRe(l)) {
+        const sp = splitNameAddr(l.replace(/^re\b\s*:?\s*/i, ""));
+        start(sp.addr, "Property address (Re:)", sp.person);
+        return;
+      }
+      // A new job starts on any line carrying a whole address, once the one
+      // we're building already has its ZIP — even if a name comes first.
+      if ((!cur || hasZip(cur.addr)) && (STREET_START.test(l) || hasZip(l))) {
+        const sp = splitNameAddr(l);
+        start(sp.addr, "", sp.person);
+        return;
+      }
       if (!cur) return;
-      cur.addr += (cur.addr.trim().endsWith(",") ? " " : ", ") + l;
+      cur.addr = cur.addr.trim() ? cur.addr + (cur.addr.trim().endsWith(",") ? " " : ", ") + l : l;
     });
     return out.map((o) => {
       const d = blankDraft("ProVest");
@@ -570,6 +603,7 @@
   // Missing address / ZIP / county: the job still SAVES, but can't go on a route until fixed.
   function problems(d) {
     const p = [];
+    if (addressCount(d.address) > 1) p.push(addressCount(d.address) + " addresses in one job — split it");
     if (!d.address) p.push("Address missing");
     else if (!hasZip(d.address)) p.push("ZIP missing");
     if (!d.county) p.push("County missing");
@@ -590,7 +624,7 @@
     return l.length ? "Add " + l.join(" + ") + " later" : "";
   }
 
-  window.JES_PARSE = { parse, problems, duplicateOf, countyFor, cleanAddress, titleCase, nameKey, hasZip, CLIENTS };
+  window.JES_PARSE = { parse, problems, duplicateOf, countyFor, cleanAddress, titleCase, nameKey, hasZip, CLIENTS, splitAddresses, splitNameAddr, addressCount };
 
   // =====================================================================
   // 2. SCREEN (Add Jobs)
@@ -760,6 +794,7 @@
           <button class="icon-btn drop" data-drop="${i}" aria-label="Remove ${esc(d.person || d.address || "this job")}">✕</button>
         </div>
         <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
+        ${addressCount(d.address) > 1 ? `<button class="btn split-btn" data-split="${i}">✂️ Split into ${addressCount(d.address)} jobs</button>` : ""}
         <div class="flag-row">
           <button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "NO PAPERS YET"}</button>
           <button class="flag rush ${d.service === "Rush" ? "on" : ""}" data-flag="service" data-i="${i}">⚡ Rush</button>
@@ -772,6 +807,29 @@
       </div>`).join("");
 
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openSheet(Number(b.getAttribute("data-edit"))));
+    // ✂️ one job holding several addresses — break it apart
+    box.querySelectorAll("[data-split]").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const i = Number(b.getAttribute("data-split"));
+      const d = S.drafts[i];
+      const parts = splitAddresses(d.address);
+      if (parts.length < 2) return;
+      const made = parts.map((part) => {
+        const sp = splitNameAddr(part);
+        const n = Object.assign({}, d);
+        n.address = cleanAddress(sp.addr);
+        n.county = countyFor(n.address);
+        if (sp.person) n.person = sp.person;
+        return n;
+      });
+      // the first one keeps the original name and job #, the rest start clean
+      made.forEach((n, k) => { if (k > 0) { n.job_no = ""; if (!splitNameAddr(parts[k]).person) n.person = ""; } });
+      S.drafts.splice(i, 1, ...made);
+      saveLocal();
+      drawDrafts();
+      J().toast("Split into " + made.length + " jobs");
+    });
+
     // ✕ on the card — gone in one tap, no scrolling to the bottom of a sheet
     box.querySelectorAll("[data-drop]").forEach((b) => b.onclick = (e) => {
       e.stopPropagation();

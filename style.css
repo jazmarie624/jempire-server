@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 40: J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 41: split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1144,4 +1144,11 @@ ol.tight li { margin-bottom: 0.15rem; }
   .je-table th { background: #000 !important; color: #fff !important; }
   .je-total { border: 1.5pt solid #000; border-top: 0; font-size: 13pt; }
   .je-foot { border-top: 0.6pt solid #000; padding-top: 5pt; }
+}
+
+/* ---------- one job holding several addresses ---------- */
+.split-btn {
+  width: 100%; margin: 0.3rem 0; min-height: 2.6rem;
+  background: var(--red); color: #fff; border: none; border-radius: 10px;
+  font-weight: 700; font-size: 0.9rem;
 }
