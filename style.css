@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 41: split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 43: packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1151,4 +1151,17 @@ ol.tight li { margin-bottom: 0.15rem; }
   width: 100%; margin: 0.3rem 0; min-height: 2.6rem;
   background: var(--red); color: #fff; border: none; border-radius: 10px;
   font-weight: 700; font-size: 0.9rem;
+}
+
+/* ---------- still needs filling in before the sheet is submitted ---------- */
+.need {
+  color: var(--red); font-weight: 700; font-size: 0.78rem;
+  border-bottom: 1px dashed var(--red); cursor: pointer;
+}
+
+/* ---------- more than one packet at this door ---------- */
+.pk-warn {
+  background: #5B3E8E; color: #fff; border-radius: 10px;
+  padding: 0.45rem 0.6rem; margin-top: 0.35rem;
+  font-weight: 700; font-size: 0.88rem; line-height: 1.3;
 }

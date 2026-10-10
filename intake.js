@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 24: wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 25: packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 24 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 25 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -90,7 +90,7 @@
 
   // Jean prints ProVest + Userve papers and hands them over weekly
   const PAPER_CLIENTS = ["ProVest", "Userve"];
-  const PACKET_RATE = 15;   // ProVest foreclosures: $15 per packet
+  let PACKET_RATE = 15;   // the per-packet price, refreshed from the rates table
   function blankDraft(client) {
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
@@ -661,7 +661,16 @@
     S.existing = jobs.data || [];
     S.rates = {};
     (rates.data || []).forEach((r) => { S.rates[r.company] = r; });
+    // ProVest foreclosures pay per packet at their standard rate
+    const pv = S.rates["ProVest"];
+    if (pv && pv.standard != null) PACKET_RATE = Number(pv.standard);
     S.ignore = (ign.data && ign.data.value) || {};
+  }
+
+  // What one packet is worth for this client
+  function packetRateFor(client) {
+    const r = S.rates[client];
+    return r && r.standard != null ? Number(r.standard) : PACKET_RATE;
   }
 
   // The price for this client at this service level. null = no rate set yet.
@@ -872,13 +881,13 @@
       const d = S.drafts[Number(b.dataset.i)], f = b.dataset.flag;
       if (f === "service") d.service = d.service === "Rush" ? "Standard" : "Rush";
       else d[f] = !d[f];
-      if (f === "is_foreclosure" && d.is_foreclosure && d.client === "ProVest") d.price = (d.packets || 1) * PACKET_RATE;
+      if (f === "is_foreclosure" && d.is_foreclosure) d.price = (d.packets || 1) * packetRateFor(d.client);
       saveLocal(); drawDrafts();
     });
     box.querySelectorAll("[data-pk]").forEach((i) => i.onchange = () => {
       const d = S.drafts[Number(i.dataset.pk)];
       d.packets = Math.max(1, parseInt(i.value, 10) || 1);
-      if (d.client === "ProVest") d.price = d.packets * PACKET_RATE;
+      d.price = d.packets * packetRateFor(d.client);
       saveLocal(); drawDrafts();
     });
 
@@ -984,7 +993,7 @@
       d.packets = Math.max(1, parseInt($f("packets") ? $f("packets").value : 1, 10) || 1);
       d.is_business = !!($f("is_business") && $f("is_business").checked);
       d.on_hold = !!($f("on_hold") && $f("on_hold").checked);
-      if (d.is_foreclosure && d.client === "ProVest" && !Number($f("price").value)) d.price = d.packets * PACKET_RATE;
+      if (d.is_foreclosure && !Number($f("price").value)) d.price = d.packets * packetRateFor(d.client);
       closeSheet(); saveLocal(); drawDrafts();
     };
     document.getElementById("shRemove").onclick = () => {

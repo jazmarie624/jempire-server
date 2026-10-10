@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 26: due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 27: packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 26 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 27 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -808,6 +808,7 @@
             ${first ? `<div class="next-label">${RS.started ? "NEXT STOP" : "FIRST STOP"} · ${i + 1} of ${RS.stops.length}</div>` : ""}
             ${flagChips(j) ? `<div class="chip-row">${flagChips(j)}</div>` : ""}
             ${j.is_business && !businessHoursNow() ? `<div class="biz-warn">🏢 Registered agent hours are 10–12 and 2–4 — it's outside those hours now</div>` : ""}
+            ${j.is_foreclosure && (j.packets || 1) > 1 ? `<div class="pk-warn">📚 TAKE ${j.packets} PACKETS to this door — all ${j.packets} get served here · ${J().money(j.price || 0)}</div>` : ""}
             <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.lat == null ? ` · <b class="bad">📍 No map pin — check address</b>` : j.geoApprox ? ` · <b class="bad">Pin is approximate</b>` : ""}</div>
           </div>
           <div class="move">
