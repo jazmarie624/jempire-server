@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 37: late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 38: due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1091,3 +1091,24 @@ ol.tight li { margin-bottom: 0.15rem; }
   background: var(--red-bg); border: 2px solid var(--red); color: var(--red);
   font-weight: 700; border-radius: 12px;
 }
+
+/* ---------- the whole box goes red when the clock is on you ---------- */
+.stop.due-now, .jline.due-now, .sheet.lineup .lu-row.due-now {
+  background: var(--red-bg) !important;
+  border-color: var(--red) !important;
+  border-left-color: var(--red) !important;
+}
+.stop.due-soon, .jline.due-soon, .sheet.lineup .lu-row.due-soon {
+  background: #FBF3E2 !important;
+  border-color: var(--gold) !important;
+  border-left-color: var(--gold) !important;
+}
+/* a ticked-off lineup row stays green even if it's due — it's handled */
+.sheet.lineup .lu-row.on,
+.sheet.lineup .lu-row.on.due-now,
+.sheet.lineup .lu-row.on.due-soon {
+  background: var(--green-bg) !important;
+  border-color: var(--green) !important;
+  border-left-color: var(--green) !important;
+}
+.stop.due-now .stop-num, .sheet.lineup .lu-row.due-now .lu-num { background: var(--red); color: #fff; }

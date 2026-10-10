@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 25: gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 26: due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 25 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 26 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -118,6 +118,15 @@
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return Math.round((due.getTime() - today.getTime()) / 864e5);
   }
+  // Tints the whole box, not just a chip — red when the clock is on you
+  function dueClass(j) {
+    if (isDone(j)) return "";
+    const d = daysLeft(j);
+    if (d == null) return "";
+    if (d <= 0) return "due-now";
+    if (d === 1) return "due-soon";
+    return "";
+  }
   function dueMark(j) {
     if (isDone(j)) return "";
     const d = daysLeft(j);
@@ -144,7 +153,7 @@
       j.status === "On Hold" ? `<span class="m hold">⏸ HOLD</span>` : ""
     ].filter(Boolean).join("");
     const title = j.person || (j.address ? j.address.split(",")[0] : "(no name)");
-    return `<div class="jline ${cls}" data-open="${j.id}" role="button" tabindex="0">
+    return `<div class="jline ${cls} ${dueClass(j)}" data-open="${j.id}" role="button" tabindex="0">
       <span class="jl-body">
         <span class="jl-row1">${marks}<b class="jl-name">${esc(title)}</b>${j.job_no ? `<span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
         <span class="jl-row2">${red ? `<b class="bad">${esc(P().problems(j).join(" · "))}</b> ` : ""}${esc(j.address || "no address yet")}<span class="jl-tail"> · ${esc(j.client || "")}${j.attempt_count && !isDone(j) ? ` · att ${j.attempt_count}/5` : ""}${j.price ? ` · ${money(j.price)}` : ""}</span></span>
@@ -790,7 +799,7 @@
     box.innerHTML = RS.stops.map((j, i) => {
       const first = i === 0;
       return `
-      <div class="stop ${first ? "current" : ""}">
+      <div class="stop ${first ? "current" : ""} ${dueClass(j)}">
         <div class="stop-top">
           <span class="stop-num">${i + 1}</span>
           <div class="draft-text">
@@ -1004,7 +1013,7 @@
       return "";
     };
     const rows = () => RS.stops.map((j, i) => `
-      <div class="lu-row ${done.has(j.id) ? "on" : ""}" data-lu="${j.id}" role="button" tabindex="0"
+      <div class="lu-row ${done.has(j.id) ? "on" : ""} ${dueClass(j)}" data-lu="${j.id}" role="button" tabindex="0"
            aria-label="Stop ${i + 1}, ${esc(j.person || "no name")}">
         <div class="lu-num">${i + 1}</div>
         <div class="lu-text">
