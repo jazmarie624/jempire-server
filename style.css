@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 36: lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 37: late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1085,3 +1085,9 @@ ol.tight li { margin-bottom: 0.15rem; }
 }
 .job-col.col-jean { border-top-color: var(--gold); }
 .job-col.col-papers { border-top-color: var(--blue, #2B5D8A); }
+
+/* ---------- a due-today stop sitting late in the route ---------- */
+.alert.late-warn {
+  background: var(--red-bg); border: 2px solid var(--red); color: var(--red);
+  font-weight: 700; border-radius: 12px;
+}

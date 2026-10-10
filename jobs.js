@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 23: lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 25: gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 23 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 25 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -714,6 +714,8 @@
     const inCounty = today.filter((j) => j.county === RS.county);
     const noAddr = inCounty.filter(needsAddress);
     RS.stops = inCounty.filter((j) => !needsAddress(j))
+      // Gas order rules the route. Deadlines show up in red instead of
+      // jumping the line — you'll drive the whole route today anyway.
       .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999) || rank(a) - rank(b));
     const otherCounty = today.filter((j) => j.county && j.county !== RS.county).length;
 
@@ -724,6 +726,18 @@
     if (waitingToday) msgs.push(`${waitingToday} job${waitingToday > 1 ? "s are" : " is"} still waiting on papers from Jean, so ${waitingToday > 1 ? "they're" : "it's"} left off the route.`);
     if (otherCounty) msgs.push(`${otherCounty} of today's jobs ${otherCounty > 1 ? "are" : "is"} in the other county and not shown here.`);
     byId("rMsg").innerHTML = msgs.map((m) => `<div class="alert soft">${J().esc(m)}</div>`).join("");
+
+    // The gas order stands, but if a last-chance job sits late in the run and
+    // you don't finish, that's the one you lose. Say so.
+    const risky = RS.stops
+      .map((j, i) => ({ j, n: i + 1 }))
+      .filter(({ j, n }) => { const d = daysLeft(j); return d != null && d <= 0 && n > Math.ceil(RS.stops.length / 2); });
+    if (risky.length) {
+      const names = risky.map(({ j, n }) => `#${n} ${J().esc(j.person || "a stop")}`).join(", ");
+      byId("rMsg").insertAdjacentHTML("afterbegin",
+        `<div class="alert late-warn">${names} ${risky.length > 1 ? "are" : "is"} due today and ${risky.length > 1 ? "sit" : "sits"} late in the run.
+         If there's any chance you don't finish, do ${risky.length > 1 ? "those" : "that one"} first.</div>`);
+    }
 
     // look up map points once (saved so it never has to look again)
     const missing = RS.stops.filter((j) => j.lat == null);
@@ -831,7 +845,7 @@
     const withPts = RS.stops.filter((j) => j.lat != null);
     if (withPts.length < 2) { if (!quiet) J().toast("Need at least 2 stops on the map"); if (RS.start === "here") RS.here = await getHere(); return; }
     const start = await homePoint();
-    const ordered = byUrgency(bestOrder(start, withPts));
+    const ordered = bestOrder(start, withPts);
     RS.stops = ordered.concat(RS.stops.filter((j) => j.lat == null));
     drawStops(); drawMap(); await saveOrder();
     const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + miles(i ? arr[i - 1] : start, p), 0);
@@ -905,7 +919,7 @@
       const here = RS.here || await getHere() || (j.lat != null ? { lat: j.lat, lng: j.lng } : null);
       if (here) {
         const ordered = bestOrder(here, RS.stops.filter((x) => x.lat != null));
-        RS.stops = byUrgency(ordered).concat(RS.stops.filter((x) => x.lat == null));
+        RS.stops = ordered.concat(RS.stops.filter((x) => x.lat == null));
       }
     }
     await saveOrder();
