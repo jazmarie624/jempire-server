@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 25: packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 26: drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 25 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 26 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -631,7 +631,7 @@
     return l.length ? "Add " + l.join(" + ") + " later" : "";
   }
 
-  window.JES_PARSE = { parse, problems, duplicateOf, countyFor, cleanAddress, titleCase, nameKey, hasZip, CLIENTS, splitAddresses, splitNameAddr, addressCount };
+  window.JES_PARSE = { parse, problems, duplicateOf, countyFor, cleanAddress, titleCase, nameKey, hasZip, CLIENTS, splitAddresses, splitNameAddr, addressCount, zipOf };
 
   // =====================================================================
   // 2. SCREEN (Add Jobs)
@@ -799,7 +799,7 @@
       const dup = twin >= 0 ? "Same address as job " + (twin + 1) + " in this paste" : duplicateOf(d, S.existing);
       return { d, i, dup, twin, p: dup ? [dup] : problems(d) };
     });
-    withP.sort((a, b) => (b.p.length > 0) - (a.p.length > 0));
+    // grouped by ZIP below, so no problems-first sort here
     const dups = withP.filter((x) => x.dup).length;
     const red = withP.filter((x) => x.p.length && !x.dup).length;
     const savable = withP.length - dups;
@@ -809,7 +809,7 @@
       ? `<span>${S.drafts.length} job${S.drafts.length > 1 ? "s" : ""} found</span><span><b class="ok">${ready} ready to route</b>${red ? ` · <b class="bad">${red} need an address</b>` : ""}${dups ? ` · <b class="bad">${dups} duplicate${dups > 1 ? "s" : ""}</b>` : ""}</span>`
       : `<span class="muted">Pick the client, paste their jobs, and tap Build Jobs.</span>`;
 
-    box.innerHTML = withP.map(({ d, i, p }) => `
+    const card = ({ d, i, p }) => `
       <div class="draft dcard2 ${p.length ? "is-red" : "is-green"}">
         <div class="d2-top">
           <span class="dot" aria-hidden="true"></span>
@@ -831,7 +831,25 @@
           <button class="flag hold ${d.on_hold ? "on" : ""}" data-flag="on_hold" data-i="${i}">⏸ Hold</button>
           <span class="d2-price">${J().money(d.price || 0)}</span>
         </div>
-      </div>`).join("");
+      </div>`;
+
+    // Grouped by ZIP, because that's how the papers come off Jean's stack
+    const byZip = new Map();
+    withP.forEach((x) => {
+      const z = zipOf(x.d.address) || "";
+      if (!byZip.has(z)) byZip.set(z, []);
+      byZip.get(z).push(x);
+    });
+    const zips = Array.from(byZip.keys()).sort((a, b) => (!a ? -1 : !b ? 1 : a.localeCompare(b)));
+    box.innerHTML = zips.map((z) => {
+      const rows = byZip.get(z);
+      const bad = rows.filter((x) => x.p.length).length;
+      const money = rows.reduce((t, x) => t + Number(x.d.price || 0), 0);
+      const head = z
+        ? `<div class="zip-head"><b>${esc(z)}</b><span>${rows.length} job${rows.length > 1 ? "s" : ""} · ${J().money(money)}${bad ? ` · <b class="bad">${bad} to fix</b>` : ""}</span></div>`
+        : `<div class="zip-head none"><b>No ZIP yet</b><span>${rows.length} job${rows.length > 1 ? "s" : ""} · fix these before routing</span></div>`;
+      return head + rows.map(card).join("");
+    }).join("");
 
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openSheet(Number(b.getAttribute("data-edit"))));
     // ✂️ one job holding several addresses — break it apart

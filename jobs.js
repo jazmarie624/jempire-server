@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 27: packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 28: papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 27 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 28 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -341,16 +341,19 @@
     byId("printSheet").innerHTML = `
       <div class="print-head"><b>${jean ? "Papers to pick up from Jean" : "Papers to print"}</b><span>${esc(d)} · ${list.length} job${list.length === 1 ? "" : "s"}</span></div>
       <table class="lu-print">
-        <thead><tr><th class="lup-x">✓</th><th class="lup-c">JOB #</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">DUE</th></tr></thead>
+        <thead><tr><th class="lup-x">✓</th><th class="lup-c">JOB #</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">CLIENT</th><th class="lup-c">DUE</th></tr></thead>
         <tbody>${list.map((j) => {
-          const head = j.client !== last ? `<tr><td colspan="5" class="lup-group"><b>${esc(j.client || "No client")}</b></td></tr>` : "";
-          last = j.client;
+          const z = zipOf(j);
+          const n = list.filter((x) => zipOf(x) === z).length;
+          const head = z !== last ? `<tr><td colspan="6" class="lup-group"><b>ZIP ${esc(z)}</b> — ${n} job${n > 1 ? "s" : ""}</td></tr>` : "";
+          last = z;
           const dl = daysLeft(j);
           return head + `<tr>
             <td class="lup-x"></td>
             <td class="lup-c">${esc(j.job_no || "—")}</td>
             <td><b>${esc(j.person || "(no name)")}</b></td>
             <td>${esc(j.address || "")}</td>
+            <td class="lup-c">${esc(j.client || "")}</td>
             <td class="lup-c">${j.due_date ? esc(fmtDate(j.due_date)) + (dl != null && dl <= 2 ? " ⚠" : "") : ""}</td>
           </tr>`;
         }).join("")}</tbody>

@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 43: packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 44: ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1165,3 +1165,15 @@ ol.tight li { margin-bottom: 0.15rem; }
   padding: 0.45rem 0.6rem; margin-top: 0.35rem;
   font-weight: 700; font-size: 0.88rem; line-height: 1.3;
 }
+
+/* ---------- ZIP groupings on the draft list ---------- */
+.zip-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem;
+  background: var(--navy); color: var(--gold-soft);
+  border-radius: 9px; padding: 0.35rem 0.6rem; margin: 0.7rem 0 0.4rem;
+}
+.zip-head:first-child { margin-top: 0; }
+.zip-head b { font-size: 1.05rem; letter-spacing: 0.06em; }
+.zip-head span { font-size: 0.8rem; }
+.zip-head .bad { color: #FFB8A8; }
+.zip-head.none { background: var(--red); color: #fff; }
