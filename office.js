@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 21: take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 22: J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 21 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 22 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
@@ -142,7 +142,7 @@
     const total = ls.reduce((s, j) => s + Number(j.price || 0), 0);
     const unticked = ls.filter((j) => !j.chk_client_app).length;
     const lastClosed = O.sheets.find((s) => s.company === sheet.company && s.status === "Closed");
-    const forJean = /Jean|Quick ?Serve|Quick Service/i.test(rate.bill_to || "");
+    const isJean = forJean(sheet.company);
 
     byId("screen").innerHTML = `
       <section class="office">
@@ -153,7 +153,7 @@
             <p class="muted">${esc(rate.bill_to ? "Billed to " + rate.bill_to : "")}</p>
           </div>
           <div class="row-gap">
-            <button class="btn ghost" id="shPrint">🖨 Print${forJean ? " for Jean" : ""}</button>
+            <button class="btn ghost" id="shPrint">🖨 Print${isJean ? " for Jean" : ""}</button>
             <button class="btn go" id="shClose">Close</button>
           </div>
         </div>
@@ -267,7 +267,14 @@
   }
 
   // ---------- printing onto Jean's blank Quickserve sheet ----------
-  const PER_PAGE = 20;   // his form has 20 numbered rows
+  const PER_PAGE = 20;   // Jean's form has 20 numbered rows
+  // Only these two go through Jean, so only these two print on his form
+  const JEAN_CLIENTS = ["ProVest", "Userve"];
+  const forJean = (company) => JEAN_CLIENTS.includes(company);
+  const billToOf = (company) => {
+    const r = O.rates.find((x) => x.company === company);
+    return (r && r.bill_to) || company;
+  };
 
   function printForJean(sheet, ls, total) {
     const { esc, money } = J();
@@ -289,19 +296,50 @@
         </tr>`);
       }
       const last = pi === pages.length - 1;
-      return `<div class="jp-page">
-        <div class="jp-head">
-          <div class="jp-logo"><b>QUICKSERVE<br>LEGAL</b><small>CERTIFIED PROCESS SOLUTIONS</small></div>
-          <div class="jp-title"><b>BLANK INVOICE SHEET</b><span>Quickserve Legal Certified Process Solutions</span></div>
-          <div class="jp-server"><span>SERVER NAME</span><b>JAZMIN AGUAYO</b><span>Period: ${esc(period)}</span></div>
+      const pageNo = pages.length > 1 ? ` — page ${pi + 1} of ${pages.length}` : "";
+
+      // Jean's own Quickserve form, only for the two clients that go through him
+      if (forJean(sheet.company)) {
+        return `<div class="jp-page">
+          <div class="jp-head">
+            <div class="jp-logo"><b>QUICKSERVE<br>LEGAL</b><small>CERTIFIED PROCESS SOLUTIONS</small></div>
+            <div class="jp-title"><b>BLANK INVOICE SHEET</b><span>Quickserve Legal Certified Process Solutions</span></div>
+            <div class="jp-server"><span>SERVER NAME</span><b>JAZMIN AGUAYO</b><span>Period: ${esc(period)}</span></div>
+          </div>
+          <div class="jp-client">${esc(sheet.company)}${pageNo}</div>
+          <table class="jp-table">
+            <thead><tr><th class="jp-n">NO.</th><th class="jp-job">JOB NUMBER</th><th class="jp-name">NAME</th><th class="jp-amt">AMOUNT</th></tr></thead>
+            <tbody>${rows.join("")}</tbody>
+          </table>
+          ${last ? `<div class="jp-total"><span>TOTAL — ${ls.length} job${ls.length === 1 ? "" : "s"}</span><b>${money(total)}</b></div>` : ""}
+          <div class="jp-foot">Quickserve Legal | Lakeland, FL | 863-594-0066 | info@quicklegalservers.com | quicklegalservers.com</div>
+        </div>`;
+      }
+
+      // Everybody else gets your own sheet
+      return `<div class="jp-page je-page">
+        <div class="je-head">
+          <div class="je-mark">
+            <svg viewBox="0 0 220 220" aria-hidden="true">
+              <g transform="translate(110,42) scale(0.8)"><path d="M-18 6 L-20 -10 L-9 -1 L0 -16 L9 -1 L20 -10 L18 6 Z" fill="#000"/><rect x="-18" y="7" width="36" height="4" fill="#000"/></g>
+              <text x="110" y="150" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="120" fill="#000">J</text>
+            </svg>
+            <span>J EMPIRE</span>
+          </div>
+          <div class="je-title"><b>INVOICE</b><span>Process Serving &amp; Notary</span></div>
+          <div class="je-meta">
+            <span>SERVER</span><b>JAZMIN AGUAYO</b>
+            <span>Period: ${esc(period)}</span>
+            ${sheet.sheet_no ? `<span>Sheet ${esc(sheet.sheet_no)}</span>` : ""}
+          </div>
         </div>
-        <div class="jp-client">${esc(sheet.company)}${pages.length > 1 ? ` — page ${pi + 1} of ${pages.length}` : ""}</div>
-        <table class="jp-table">
+        <div class="je-billto"><span>BILL TO</span><b>${esc(billToOf(sheet.company))}</b>${pageNo}</div>
+        <table class="jp-table je-table">
           <thead><tr><th class="jp-n">NO.</th><th class="jp-job">JOB NUMBER</th><th class="jp-name">NAME</th><th class="jp-amt">AMOUNT</th></tr></thead>
           <tbody>${rows.join("")}</tbody>
         </table>
-        ${last ? `<div class="jp-total"><span>TOTAL — ${ls.length} job${ls.length === 1 ? "" : "s"}</span><b>${money(total)}</b></div>` : ""}
-        <div class="jp-foot">Quickserve Legal | Lakeland, FL | 863-594-0066 | info@quicklegalservers.com | quicklegalservers.com</div>
+        ${last ? `<div class="jp-total je-total"><span>AMOUNT DUE — ${ls.length} job${ls.length === 1 ? "" : "s"}</span><b>${money(total)}</b></div>` : ""}
+        <div class="jp-foot je-foot">Jazmin Aguayo · St. Cloud, FL · 407-487-6008 · Jazmarie624@gmail.com</div>
       </div>`;
     }).join("");
     window.print();

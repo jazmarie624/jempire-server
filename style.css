@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 39: unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 40: J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1121,4 +1121,27 @@ ol.tight li { margin-bottom: 0.15rem; }
 .tick.undo:active { background: var(--gold); border-color: var(--gold); color: #fff; }
 @media (max-width: 560px) {
   .sheet-lines .sl-head, .sheet-lines .sl-row { grid-template-columns: 1.3rem minmax(0, 1fr) 1.8rem 4rem 2.1rem 2.1rem; }
+}
+
+/* ---------- J Empire invoice sheet (everyone except Jean's two) ---------- */
+@media print {
+  .je-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12pt; margin-bottom: 10pt; }
+  .je-mark { text-align: center; min-width: 86pt; }
+  .je-mark svg { width: 58pt; height: 58pt; display: block; margin: 0 auto; }
+  .je-mark span { display: block; font-size: 8pt; font-weight: 700; letter-spacing: 4pt; margin-top: -4pt; }
+  .je-title { text-align: center; padding-top: 14pt; }
+  .je-title b { display: block; font-family: var(--serif); font-size: 26pt; letter-spacing: 6pt; }
+  .je-title span { display: block; font-size: 8.5pt; letter-spacing: 1pt; }
+  .je-meta { text-align: right; padding-top: 12pt; font-size: 8.5pt; }
+  .je-meta b { display: block; font-size: 12pt; letter-spacing: 0.5pt; margin-bottom: 3pt; }
+  .je-meta span { display: block; }
+  .je-billto {
+    border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000;
+    padding: 5pt 0; margin-bottom: 6pt; font-size: 9pt;
+  }
+  .je-billto span { font-size: 7.5pt; letter-spacing: 2pt; display: block; }
+  .je-billto b { font-size: 13pt; }
+  .je-table th { background: #000 !important; color: #fff !important; }
+  .je-total { border: 1.5pt solid #000; border-top: 0; font-size: 13pt; }
+  .je-foot { border-top: 0.6pt solid #000; padding-top: 5pt; }
 }
