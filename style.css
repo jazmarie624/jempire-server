@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 32: version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 34: remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1042,3 +1042,15 @@ ol.tight li { margin-bottom: 0.15rem; }
   min-height: 2.1rem; padding: 0 0.8rem; border: 1px solid var(--line); border-radius: 1rem;
   background: var(--paper); font-size: 0.78rem; font-weight: 700; color: var(--gold-text);
 }
+
+/* ---------- Need-papers-printed column ---------- */
+.thin-row { margin-bottom: 0.4rem; }
+.btn.thin.grow { flex: 1; }
+.jl-today.print { background: var(--gold); border-color: var(--gold); color: #fff; }
+@media print { .lup-group { border-bottom: 1pt solid #000; padding-top: 6pt !important; font-size: 10pt; } }
+
+/* ---------- one-tap remove on a draft card ---------- */
+.icon-btn.drop {
+  border-color: var(--red); color: var(--red); font-weight: 700; font-size: 1rem; line-height: 1;
+}
+.icon-btn.drop:active { background: var(--red); color: #fff; }

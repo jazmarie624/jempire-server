@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 21: handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 22: one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 21 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 22 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -757,6 +757,7 @@
           <button class="icon-btn" data-edit="${i}" aria-label="Open ${esc(d.person || d.address || "job")}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
           </button>
+          <button class="icon-btn drop" data-drop="${i}" aria-label="Remove ${esc(d.person || d.address || "this job")}">✕</button>
         </div>
         <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
         <div class="flag-row">
@@ -771,6 +772,16 @@
       </div>`).join("");
 
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openSheet(Number(b.getAttribute("data-edit"))));
+    // ✕ on the card — gone in one tap, no scrolling to the bottom of a sheet
+    box.querySelectorAll("[data-drop]").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const i = Number(b.getAttribute("data-drop"));
+      const name = (S.drafts[i] && (S.drafts[i].person || S.drafts[i].address)) || "that job";
+      S.drafts.splice(i, 1);
+      saveLocal();
+      drawDrafts();
+      J().toast("Removed " + name);
+    });
     // tap the name or job # and just type
     box.querySelectorAll(".tap-field").forEach((el) => {
       el.onblur = () => {
@@ -801,10 +812,18 @@
       <label class="check-line"><input type="checkbox" id="inToday" ${S.addToday ? "checked" : ""}> Also add to Today's route</label>
       <button class="btn go" id="inSave" ${savable ? "" : "disabled"}>Save ${savable} Job${savable === 1 ? "" : "s"}</button>
       ${red ? `<p class="muted small center">Red jobs can still be saved — you'll be asked what to do with them.</p>` : ""}
-      ${dups ? `<p class="muted small center">Duplicates are not saved. Remove them with ✏️ → Remove.</p>` : ""}
+      ${dups ? `<button class="btn ghost" id="inDropDups">✕ Clear the ${dups} duplicate${dups === 1 ? "" : "s"}</button>
+        <p class="muted small center">Already saved, so they won't be saved again. Tap ✕ on any card to drop just that one.</p>` : ""}
       <button class="btn ghost" id="inClear">Clear all drafts</button>`;
     document.getElementById("inToday").onchange = (e) => { S.addToday = e.target.checked; };
     document.getElementById("inSave").onclick = checkBeforeSave;
+    const dd = document.getElementById("inDropDups");
+    if (dd) dd.onclick = () => {
+      const before = S.drafts.length;
+      S.drafts = S.drafts.filter((d) => !duplicateOf(d, S.existing));
+      saveLocal(); drawDrafts();
+      J().toast((before - S.drafts.length) + " duplicate" + (before - S.drafts.length === 1 ? "" : "s") + " cleared");
+    };
     document.getElementById("inClear").onclick = () => {
       if (!confirm("Remove all drafts on this screen? Saved jobs are not affected.")) return;
       S.drafts = []; saveLocal(); drawDrafts();
