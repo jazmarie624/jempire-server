@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — app.js (version 16: version stamp on Home —  Attempts + Sheets replace Done + Invoices)
+// J EMPIRE SERVER — app.js (version 17: version stamp on Home —  Attempts + Sheets replace Done + Invoices)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { app: 16 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { app: 17 });
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);

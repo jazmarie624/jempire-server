@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 19: Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 20: need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 19 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 20 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -46,7 +46,7 @@
   // Needs address → Ready to route → On today's route → On hold
   const COLS = [
     { id: "fix",    short: "Fix",    title: "Needs address",     sub: "Add the address to route it",   test: (j) => !isDone(j) && j.status !== "On Hold" && !waitingPapers(j) && needsAddress(j) },
-    { id: "papers", short: "Papers", title: "Waiting on papers", sub: "From Jean · can't route yet",    test: (j) => waitingPapers(j) },
+    { id: "papers", short: "Print",  title: "Need papers printed", sub: "Print them, then tick them off", test: (j) => waitingPapers(j) },
     { id: "ready",  short: "Ready",  title: "Ready to route",    sub: "Tap + Today to add",             test: (j) => j.status === "Active" && !waitingPapers(j) && !needsAddress(j) && !j.on_today },
     { id: "today",  short: "Today",  title: "On today's route",  sub: "Shown on Route",                 test: (j) => j.status === "Active" && !waitingPapers(j) && !needsAddress(j) && j.on_today },
     { id: "hold",   short: "Hold",   title: "On hold",           sub: "Paused or has a problem",        test: (j) => j.status === "On Hold" }
@@ -69,6 +69,7 @@
         </div>
         <div class="chips phone-only" id="jColPick"></div>
         <div id="jBody"><p class="muted">Loading…</p></div>
+        <div id="printSheet" class="print-only"></div>
       </section>
       <div class="sheet-back" id="sheetBack" hidden></div>`;
     byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
@@ -132,7 +133,8 @@
         <span class="jl-row1">${marks}<b class="jl-name">${esc(title)}</b>${j.job_no ? `<span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
         <span class="jl-row2">${red ? `<b class="bad">${esc(P().problems(j).join(" · "))}</b> ` : ""}${esc(j.address || "no address yet")}<span class="jl-tail"> · ${esc(j.client || "")}${j.attempt_count && !isDone(j) ? ` · att ${j.attempt_count}/5` : ""}${j.price ? ` · ${money(j.price)}` : ""}</span></span>
       </span>
-      ${j.status === "Active" && !red && !wait ? `<button class="jl-today ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today">${j.on_today ? "✓" : "+"}</button>` : ""}
+      ${wait ? `<button class="jl-today print" data-papers="${j.id}" aria-label="Mark the papers printed for ${esc(title)}">🖨</button>`
+        : j.status === "Active" && !red ? `<button class="jl-today ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today">${j.on_today ? "✓" : "+"}</button>` : ""}
     </div>`;
   }
 
@@ -254,7 +256,10 @@
       body.innerHTML = `<div class="job-cols five">${lists.map(({ c, jobs }) => `
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
           <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
-          ${c.id === "papers" && jobs.length ? `<button class="btn go thin" data-pickup="1">📄 Got papers from Jean</button>` : ""}
+          ${c.id === "papers" && jobs.length ? `<div class="row-gap thin-row">
+            <button class="btn ghost thin grow" data-printlist="1">🖨 Print this list</button>
+            <button class="btn go thin grow" data-pickup="1">✓ All printed</button>
+          </div>` : ""}
           <div class="col-list ${jobs.length > 7 ? "two-up" : ""}">${jobs.length ? jobs.map(JS.dense ? jobLine : jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
         </div>`).join("")}</div>
         <p class="muted small center">Finished and paid jobs are in <b>History</b> (switch at the top).</p>`;
@@ -262,9 +267,18 @@
     }
     wireCards(body, drawList);
     body.querySelectorAll("[data-open]").forEach((b) => b.onclick = (e) => {
-      if (e.target.closest("[data-today]")) return;
+      if (e.target.closest("[data-today]") || e.target.closest("[data-papers]")) return;
       openJob(JS.jobs.find((j) => j.id === b.dataset.open), drawJobs);
     });
+    body.querySelectorAll("[data-papers]").forEach((b) => b.onclick = async (e) => {
+      e.stopPropagation();
+      if (await updateJob(b.dataset.papers, { has_papers: true })) {
+        J().toast("Printed ✓ — moved to Ready to route");
+        J().refreshBadges && J().refreshBadges();
+        drawJobs();
+      }
+    });
+    body.querySelectorAll("[data-printlist]").forEach((b) => b.onclick = () => printPapersList());
     body.querySelectorAll("[data-gotpaper]").forEach((b) => b.onclick = async () => {
       if (await updateJob(b.dataset.gotpaper, { has_papers: true })) { J().toast("Papers in hand ✓ — ready to route"); J().refreshBadges && J().refreshBadges(); drawJobs(); }
     });
@@ -274,6 +288,35 @@
       j.on_today = !j.on_today;
       J().refreshBadges && J().refreshBadges(); if (await updateJob(j.id, { on_today: j.on_today, route_order: null })) { drawList(); J().toast(j.on_today ? "Added to today" : "Removed from today"); }
     });
+  }
+
+  // ---------- the printing list: what still needs papers run off ----------
+  function printPapersList() {
+    const { esc } = J();
+    const list = JS.jobs.filter(waitingPapers)
+      .sort((a, b) => (a.client || "").localeCompare(b.client || "") ||
+        (daysLeft(a) ?? 99) - (daysLeft(b) ?? 99));
+    if (!list.length) { J().toast("Nothing waiting to be printed"); return; }
+    const d = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    let last = "";
+    byId("printSheet").innerHTML = `
+      <div class="print-head"><b>Papers to print</b><span>${esc(d)} · ${list.length} job${list.length === 1 ? "" : "s"}</span></div>
+      <table class="lu-print">
+        <thead><tr><th class="lup-x">✓</th><th class="lup-c">JOB #</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">DUE</th></tr></thead>
+        <tbody>${list.map((j) => {
+          const head = j.client !== last ? `<tr><td colspan="5" class="lup-group"><b>${esc(j.client || "No client")}</b></td></tr>` : "";
+          last = j.client;
+          const dl = daysLeft(j);
+          return head + `<tr>
+            <td class="lup-x"></td>
+            <td class="lup-c">${esc(j.job_no || "—")}</td>
+            <td><b>${esc(j.person || "(no name)")}</b></td>
+            <td>${esc(j.address || "")}</td>
+            <td class="lup-c">${j.due_date ? esc(fmtDate(j.due_date)) + (dl != null && dl <= 2 ? " ⚠" : "") : ""}</td>
+          </tr>`;
+        }).join("")}</tbody>
+      </table>`;
+    window.print();
   }
 
   // ---------- weekly pickup: tick what's in the stack from Jean ----------
