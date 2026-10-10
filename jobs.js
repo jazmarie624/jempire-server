@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 20: need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 21: print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 20 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 21 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -46,12 +46,15 @@
   // Needs address → Ready to route → On today's route → On hold
   const COLS = [
     { id: "fix",    short: "Fix",    title: "Needs address",     sub: "Add the address to route it",   test: (j) => !isDone(j) && j.status !== "On Hold" && !waitingPapers(j) && needsAddress(j) },
-    { id: "papers", short: "Print",  title: "Need papers printed", sub: "Print them, then tick them off", test: (j) => waitingPapers(j) },
+    { id: "papers", short: "Print",  title: "Need papers printed", sub: "Emailed to you · print them yourself",
+      test: (j) => waitingPapers(j) && !PAPER_CLIENTS.includes(j.client) },
+    { id: "jean",   short: "Jean",   title: "Waiting on Jean",     sub: "He has the papers · can't route yet",
+      test: (j) => waitingPapers(j) && PAPER_CLIENTS.includes(j.client) },
     { id: "ready",  short: "Ready",  title: "Ready to route",    sub: "Tap + Today to add",             test: (j) => j.status === "Active" && !waitingPapers(j) && !needsAddress(j) && !j.on_today },
     { id: "today",  short: "Today",  title: "On today's route",  sub: "Shown on Route",                 test: (j) => j.status === "Active" && !waitingPapers(j) && !needsAddress(j) && j.on_today },
     { id: "hold",   short: "Hold",   title: "On hold",           sub: "Paused or has a problem",        test: (j) => j.status === "On Hold" }
   ];
-  const FILTER_TO_COL = { "Needs address": "fix", "Papers": "papers", "Active": "ready", "Today": "today", "On Hold": "hold" };
+  const FILTER_TO_COL = { "Needs address": "fix", "Papers": "papers", "Jean": "jean", "Active": "ready", "Today": "today", "On Hold": "hold" };
   const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", q: "", jobs: [], invs: {}, dense: localStorage.getItem("jes_dense") !== "cards" };
 
   async function drawJobs(opts) {
@@ -225,7 +228,7 @@
     byId("jColPick").innerHTML = cols.map(({ c, jobs }) => `<button class="chip ${c === JS.hcol ? "on" : ""}" data-hcol="${esc(c)}">${esc(shortName(c))} (${jobs.length})</button>`).join("");
     byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-hcol]"); if (b) { JS.hcol = b.dataset.hcol; drawList(); } };
     const monthOf = (j) => new Date(j.done_at || j.created_at).toLocaleDateString([], { month: "long", year: "numeric" });
-    byId("jBody").innerHTML = `${q ? `<p class="muted small">Showing matches for “${esc(JS.q)}”.</p>` : ""}<div class="job-cols five">${cols.map(({ c, jobs }) => {
+    byId("jBody").innerHTML = `${q ? `<p class="muted small">Showing matches for “${esc(JS.q)}”.</p>` : ""}<div class="job-cols hist">${cols.map(({ c, jobs }) => {
       let last = "";
       const total = jobs.reduce((a, j) => a + Number(j.price || 0), 0);
       return `<div class="job-col hist-col ${c === JS.hcol ? "phone-on" : ""}">
@@ -253,12 +256,16 @@
     } else {
       const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && c.test(j)).sort(sortJobs) }));
       byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.short} <b>${jobs.length}</b></button>`).join("");
-      body.innerHTML = `<div class="job-cols five">${lists.map(({ c, jobs }) => `
+      body.innerHTML = `<div class="job-cols six">${lists.map(({ c, jobs }) => `
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
           <div class="col-head"><div><h2>${c.title}</h2><div class="col-sub">${c.sub}</div></div><span class="col-count">${jobs.length}</span></div>
           ${c.id === "papers" && jobs.length ? `<div class="row-gap thin-row">
-            <button class="btn ghost thin grow" data-printlist="1">🖨 Print this list</button>
-            <button class="btn go thin grow" data-pickup="1">✓ All printed</button>
+            <button class="btn ghost thin grow" data-printlist="papers">🖨 Print this list</button>
+            <button class="btn go thin grow" data-allpapers="papers">✓ All printed</button>
+          </div>` : ""}
+          ${c.id === "jean" && jobs.length ? `<div class="row-gap thin-row">
+            <button class="btn ghost thin grow" data-printlist="jean">🖨 List for Jean</button>
+            <button class="btn go thin grow" data-pickup="1">✓ Got them from Jean</button>
           </div>` : ""}
           <div class="col-list ${jobs.length > 7 ? "two-up" : ""}">${jobs.length ? jobs.map(JS.dense ? jobLine : jobCard).join("") : `<p class="muted small center">Nothing here.</p>`}</div>
         </div>`).join("")}</div>
@@ -278,7 +285,16 @@
         drawJobs();
       }
     });
-    body.querySelectorAll("[data-printlist]").forEach((b) => b.onclick = () => printPapersList());
+    body.querySelectorAll("[data-printlist]").forEach((b) => b.onclick = () => printPapersList(b.dataset.printlist));
+    body.querySelectorAll("[data-allpapers]").forEach((b) => b.onclick = async () => {
+      const mine = JS.jobs.filter((j) => waitingPapers(j) && !PAPER_CLIENTS.includes(j.client));
+      if (!mine.length) return;
+      if (!confirm(`Mark all ${mine.length} as printed?`)) return;
+      for (const j of mine) await updateJob(j.id, { has_papers: true });
+      J().toast(mine.length + " marked printed ✓");
+      J().refreshBadges && J().refreshBadges();
+      drawJobs();
+    });
     body.querySelectorAll("[data-gotpaper]").forEach((b) => b.onclick = async () => {
       if (await updateJob(b.dataset.gotpaper, { has_papers: true })) { J().toast("Papers in hand ✓ — ready to route"); J().refreshBadges && J().refreshBadges(); drawJobs(); }
     });
@@ -291,16 +307,17 @@
   }
 
   // ---------- the printing list: what still needs papers run off ----------
-  function printPapersList() {
+  function printPapersList(which) {
     const { esc } = J();
-    const list = JS.jobs.filter(waitingPapers)
+    const jean = which === "jean";
+    const list = JS.jobs.filter((j) => waitingPapers(j) && (jean ? PAPER_CLIENTS.includes(j.client) : !PAPER_CLIENTS.includes(j.client)))
       .sort((a, b) => (a.client || "").localeCompare(b.client || "") ||
         (daysLeft(a) ?? 99) - (daysLeft(b) ?? 99));
-    if (!list.length) { J().toast("Nothing waiting to be printed"); return; }
+    if (!list.length) { J().toast(jean ? "Nothing waiting on Jean" : "Nothing waiting to be printed"); return; }
     const d = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
     let last = "";
     byId("printSheet").innerHTML = `
-      <div class="print-head"><b>Papers to print</b><span>${esc(d)} · ${list.length} job${list.length === 1 ? "" : "s"}</span></div>
+      <div class="print-head"><b>${jean ? "Papers to pick up from Jean" : "Papers to print"}</b><span>${esc(d)} · ${list.length} job${list.length === 1 ? "" : "s"}</span></div>
       <table class="lu-print">
         <thead><tr><th class="lup-x">✓</th><th class="lup-c">JOB #</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">DUE</th></tr></thead>
         <tbody>${list.map((j) => {

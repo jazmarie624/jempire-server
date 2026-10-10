@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 34: remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 35: six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1054,3 +1054,17 @@ ol.tight li { margin-bottom: 0.15rem; }
   border-color: var(--red); color: var(--red); font-weight: 700; font-size: 1rem; line-height: 1;
 }
 .icon-btn.drop:active { background: var(--red); color: #fff; }
+
+/* ---------- six working columns + the history strip ---------- */
+@media (min-width: 900px) {
+  .job-cols.six { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; align-items: start; }
+  .job-cols.six .job-col { padding: 0.5rem; }
+  .job-cols.six h2 { font-size: 1.05rem; }
+  .job-cols.six .col-sub { font-size: 0.72rem; }
+  .job-cols.hist { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; align-items: start; }
+}
+@media (min-width: 1250px) {
+  .job-cols.hist { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
+.job-col.col-jean { border-top-color: var(--gold); }
+.job-col.col-papers { border-top-color: var(--blue, #2B5D8A); }
