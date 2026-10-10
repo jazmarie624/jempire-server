@@ -1,6 +1,7 @@
 // J EMPIRE SERVER — jobs.js (version 19: Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 19 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);

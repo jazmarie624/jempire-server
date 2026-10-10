@@ -1,6 +1,7 @@
-// J EMPIRE SERVER — app.js (version 15: Attempts + Sheets replace Done + Invoices)
+// J EMPIRE SERVER — app.js (version 16: version stamp on Home —  Attempts + Sheets replace Done + Invoices)
 (function () {
   "use strict";
+  window.JES_VER = Object.assign(window.JES_VER || {}, { app: 16 });
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);
@@ -168,13 +169,28 @@
           <button class="tile red" data-go="money"><div class="tile-label">Owed to me ›</div><div class="tile-value">…</div><div class="tile-sub">Submitted, not paid</div></button>
           <button class="tile green" data-go="money"><div class="tile-label">This week ›</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></button>
         </div>
+        <div class="ver-line" id="verLine"></div>
       </section>`;
+    drawVersion();
     document.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
       const mode = b.getAttribute("data-mode");
       store.set("jes_mode", mode);
       go(mode === "field" ? "add" : "sheets");
     });
     loadGlance();
+  }
+
+  // So you can always tell at a glance whether an upload actually landed
+  function drawVersion() {
+    const v = window.JES_VER || {};
+    const box = $("#verLine");
+    if (!box) return;
+    box.innerHTML = `<span>Version <b>${v.app || "?"}.${v.intake || "?"}.${v.jobs || "?"}.${v.office || "?"}</b></span>
+      <button class="ver-reload" id="verReload">Check for an update</button>`;
+    $("#verReload").onclick = () => {
+      // Jump to a fresh address so the phone can't hand back a stale page
+      location.replace(location.pathname + "?r=" + Date.now());
+    };
   }
 
   async function loadGlance() {

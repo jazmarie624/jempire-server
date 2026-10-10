@@ -3,6 +3,7 @@
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 20 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };

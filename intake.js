@@ -3,6 +3,7 @@
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 21 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)

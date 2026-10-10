@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 31: Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 32: version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1029,4 +1029,16 @@ ol.tight li { margin-bottom: 0.15rem; }
   .lup-n { width: 26pt; text-align: center !important; font-weight: 700; font-size: 13pt !important; }
   .lup-c { width: 110pt; font-size: 8.5pt !important; }
   .lup-x { width: 26pt; border-left: 0.5pt solid #000; }
+}
+
+/* ---------- Version stamp on the Home screen ---------- */
+.ver-line {
+  display: flex; align-items: center; justify-content: center; gap: 0.7rem; flex-wrap: wrap;
+  margin-top: 1rem; padding-top: 0.7rem; border-top: 1px solid var(--line);
+  font-size: 0.8rem; color: var(--navy-2);
+}
+.ver-line b { color: var(--navy); font-size: 0.9rem; letter-spacing: 0.04em; }
+.ver-reload {
+  min-height: 2.1rem; padding: 0 0.8rem; border: 1px solid var(--line); border-radius: 1rem;
+  background: var(--paper); font-size: 0.78rem; font-weight: 700; color: var(--gold-text);
 }
