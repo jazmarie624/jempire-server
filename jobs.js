@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 21: print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 23: lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 21 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 23 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -20,7 +20,20 @@
     if (waitingPapers(j)) out.push(`<span class="flag-chip paper">📄 Waiting on papers</span>`);
     return out.join(" ");
   }
-  const urgent = (j) => { const d = daysLeft(j); return (j.service === "Rush" || (d != null && d <= 1)) ? 1 : 0; };
+  // What drives first. Lower wins: overdue, due today, due tomorrow, rush, the rest.
+  const rank = (j) => {
+    const d = daysLeft(j);
+    if (d != null && d < 0) return 0;
+    if (d === 0) return 1;
+    if (d === 1) return 2;
+    if (j.service === "Rush") return 3;
+    return 4;
+  };
+  const urgent = (j) => (rank(j) <= 3 ? 1 : 0);
+  // Urgent ones to the front, without throwing away the gas-saving order
+  const byUrgency = (list) => list.map((j, i) => ({ j, i }))
+    .sort((a, b) => rank(a.j) - rank(b.j) || a.i - b.i)
+    .map((x) => x.j);
   const needsAddress = (j) => !j.address || !P().hasZip(j.address) || !j.county;
   const isDone = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
 
@@ -701,7 +714,7 @@
     const inCounty = today.filter((j) => j.county === RS.county);
     const noAddr = inCounty.filter(needsAddress);
     RS.stops = inCounty.filter((j) => !needsAddress(j))
-      .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999) || urgent(b) - urgent(a));
+      .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999) || rank(a) - rank(b));
     const otherCounty = today.filter((j) => j.county && j.county !== RS.county).length;
 
     const msgs = [];
@@ -818,10 +831,8 @@
     const withPts = RS.stops.filter((j) => j.lat != null);
     if (withPts.length < 2) { if (!quiet) J().toast("Need at least 2 stops on the map"); if (RS.start === "here") RS.here = await getHere(); return; }
     const start = await homePoint();
-    const ordered = bestOrder(start, withPts);
-    const rush = ordered.filter((j) => j.service === "Rush");
-    const rest = ordered.filter((j) => j.service !== "Rush");
-    RS.stops = rush.concat(rest, RS.stops.filter((j) => j.lat == null));
+    const ordered = byUrgency(bestOrder(start, withPts));
+    RS.stops = ordered.concat(RS.stops.filter((j) => j.lat == null));
     drawStops(); drawMap(); await saveOrder();
     const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + miles(i ? arr[i - 1] : start, p), 0);
     if (!quiet) J().toast(`Order set from ${RS.start === "here" && RS.here ? "where you are" : "home"} · about ${total.toFixed(1)} miles (straight-line)`);
@@ -894,7 +905,7 @@
       const here = RS.here || await getHere() || (j.lat != null ? { lat: j.lat, lng: j.lng } : null);
       if (here) {
         const ordered = bestOrder(here, RS.stops.filter((x) => x.lat != null));
-        RS.stops = ordered.filter(urgent).concat(ordered.filter((x) => !urgent(x)), RS.stops.filter((x) => x.lat == null));
+        RS.stops = byUrgency(ordered).concat(RS.stops.filter((x) => x.lat == null));
       }
     }
     await saveOrder();
@@ -969,32 +980,46 @@
     const done = lineDone();
     const back = byId("sheetBack");
     back.hidden = false;
+    const dueChip = (j) => {
+      const d = daysLeft(j);
+      if (d == null) return "";
+      if (d < 0) return `<span class="lu-due late">OVERDUE</span>`;
+      if (d === 0) return `<span class="lu-due late">DUE TODAY</span>`;
+      if (d === 1) return `<span class="lu-due late">DUE TOMORROW</span>`;
+      if (d <= 3) return `<span class="lu-due soon">${d} DAYS</span>`;
+      return "";
+    };
     const rows = () => RS.stops.map((j, i) => `
-      <label class="lu-row ${done.has(j.id) ? "on" : ""}">
-        <span class="lu-num">${i + 1}</span>
-        <span class="lu-text">
-          <span class="lu-name">${esc(j.person || "(no name)")}</span>
-          <span class="lu-sub">${esc(j.address || "")}</span>
-          <span class="lu-sub2">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}${j.has_papers === false ? " · 📄 NO PAPERS" : ""}</span>
-        </span>
-        <input type="checkbox" data-lu="${j.id}" ${done.has(j.id) ? "checked" : ""} aria-label="Sticky note ${i + 1} written">
-      </label>`).join("");
+      <div class="lu-row ${done.has(j.id) ? "on" : ""}" data-lu="${j.id}" role="button" tabindex="0"
+           aria-label="Stop ${i + 1}, ${esc(j.person || "no name")}">
+        <div class="lu-num">${i + 1}</div>
+        <div class="lu-text">
+          <div class="lu-name">${esc(j.person || "(no name)")}</div>
+          <div class="lu-sub">${esc(j.address || "")}</div>
+          <div class="lu-sub2">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}${dueChip(j)}${j.has_papers === false ? ` <span class="lu-due late">NO PAPERS</span>` : ""}</div>
+        </div>
+        <div class="lu-tick">${done.has(j.id) ? "✓" : ""}</div>
+      </div>`).join("");
 
     const paint = () => {
+      const n = RS.stops.length, got = RS.stops.filter((j) => done.has(j.id)).length;
       back.innerHTML = `<div class="sheet lineup" role="dialog" aria-modal="true" aria-labelledby="luT">
-        <h2 id="luT">Lineup · ${esc(RS.county)}</h2>
-        <p class="muted">Write these numbers on your sticky notes. ${RS.stops.length} stop${RS.stops.length === 1 ? "" : "s"}, in the order you'll drive them.</p>
+        <div class="lu-head">
+          <h2 id="luT">Lineup · ${esc(RS.county)}</h2>
+          <span class="lu-count ${got === n ? "all" : ""}">${got} of ${n} numbered</span>
+        </div>
+        <p class="muted small">Write the number on the papers, then tap the row.</p>
         <div class="lu-list">${rows()}</div>
         <div class="sheet-btns">
-          <button class="btn ghost" id="luPrint">🖨 Print the lineup</button>
+          <button class="btn ghost" id="luPrint">🖨 Print</button>
           <button class="btn go" id="luClose">Done</button>
         </div>
       </div>`;
-      back.querySelectorAll("[data-lu]").forEach((b) => b.onchange = () => {
-        const id = b.getAttribute("data-lu");
-        b.checked ? done.add(id) : done.delete(id);
+      back.querySelectorAll("[data-lu]").forEach((row) => row.onclick = () => {
+        const id = row.getAttribute("data-lu");
+        if (done.has(id)) done.delete(id); else done.add(id);
         lineSave(done);
-        b.closest(".lu-row").classList.toggle("on", b.checked);
+        paint();
       });
       byId("luClose").onclick = () => { back.hidden = true; back.innerHTML = ""; };
       byId("luPrint").onclick = () => { back.hidden = true; back.innerHTML = ""; printLineup(); };

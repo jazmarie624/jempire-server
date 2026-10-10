@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 35: six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 36: lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1001,23 +1001,40 @@ ol.tight li { margin-bottom: 0.15rem; }
 .m.late, .m.type, .m.due { font-weight: 700; }
 
 /* ---------- Lineup (numbering the papers for sticky notes) ---------- */
-.sheet.lineup { max-height: 88vh; display: flex; flex-direction: column; }
-.lu-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem; margin: 0.4rem 0; }
-.lu-row {
-  display: flex; align-items: center; gap: 0.6rem;
-  background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 0.4rem 0.5rem;
+.sheet.lineup { max-height: 88vh; display: flex; flex-direction: column; gap: 0.3rem; }
+.sheet.lineup .lu-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+.sheet.lineup .lu-head h2 { margin: 0; }
+.sheet.lineup .lu-count { font-size: 0.82rem; font-weight: 700; color: var(--gold-text); white-space: nowrap; }
+.sheet.lineup .lu-count.all { color: var(--green); }
+.sheet.lineup .lu-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; margin: 0.3rem 0; }
+
+/* the row has to beat ".sheet label { flex-direction: column }" */
+.sheet.lineup .lu-row {
+  display: flex !important; flex-direction: row !important; align-items: center; gap: 0.7rem;
+  background: var(--paper); border: 1px solid var(--line); border-left: 6px solid var(--navy);
+  border-radius: 10px; padding: 0.5rem 0.6rem; text-align: left; color: var(--navy);
+  min-height: 3.4rem; cursor: pointer;
 }
-.lu-row.on { background: var(--green-bg); border-color: var(--green); }
-.lu-num {
-  flex: 0 0 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--navy); color: var(--gold-soft);
-  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem;
+.sheet.lineup .lu-row.on { background: var(--green-bg); border-color: var(--green); border-left-color: var(--green); }
+.sheet.lineup .lu-num {
+  flex: 0 0 2.6rem; width: 2.6rem; height: 2.6rem; border-radius: 10px;
+  background: var(--navy); color: var(--gold-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-weight: 700; font-size: 1.5rem; line-height: 1;
 }
-.lu-row.on .lu-num { background: var(--green); color: #fff; }
-.lu-text { flex: 1; min-width: 0; }
-.lu-name { display: block; font-weight: 700; font-size: 0.98rem; }
-.lu-sub { display: block; font-size: 0.82rem; color: var(--navy-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lu-sub2 { display: block; font-size: 0.78rem; color: var(--gold-text); font-weight: 600; }
-.lu-row input[type="checkbox"] { width: 1.5rem; height: 1.5rem; flex-shrink: 0; accent-color: var(--green); }
+.sheet.lineup .lu-row.on .lu-num { background: var(--green); color: #fff; }
+.sheet.lineup .lu-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.08rem; }
+.sheet.lineup .lu-name { font-size: 1rem; font-weight: 700; color: var(--navy); }
+.sheet.lineup .lu-sub { font-size: 0.84rem; color: var(--navy-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet.lineup .lu-sub2 { font-size: 0.76rem; font-weight: 600; color: var(--gold-text); display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.lu-due { font-size: 0.68rem; font-weight: 700; padding: 0.05rem 0.35rem; border-radius: 4px; color: #fff; letter-spacing: 0.03em; }
+.lu-due.late { background: var(--red); }
+.lu-due.soon { background: var(--gold); }
+.sheet.lineup .lu-tick {
+  flex: 0 0 2rem; width: 2rem; height: 2rem; border-radius: 7px; border: 2px solid var(--line);
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; color: var(--green);
+}
+.sheet.lineup .lu-row.on .lu-tick { border-color: var(--green); background: var(--green); color: #fff; }
 
 @media print {
   .lu-print { width: 100%; border-collapse: collapse; color: #000; }
