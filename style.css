@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 38: due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 39: unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1112,3 +1112,13 @@ ol.tight li { margin-bottom: 0.15rem; }
   border-left-color: var(--green) !important;
 }
 .stop.due-now .stop-num, .sheet.lineup .lu-row.due-now .lu-num { background: var(--red); color: #fff; }
+
+/* ---------- put a line back on the route ---------- */
+.sl-head span:last-child, .sl-row .center:last-child { }
+.sheet-lines .sl-head, .sheet-lines .sl-row { grid-template-columns: 1.6rem 6.4rem minmax(0, 1fr) 2rem 5rem 2.4rem 2.4rem; }
+.sheet-lines .sl-head.pay, .sheet-lines .sl-row.pay { grid-template-columns: 1.6rem 6.4rem minmax(0, 1fr) 4.4rem 5rem 3.4rem; }
+.tick.undo { border-color: var(--line); color: var(--gold-text); font-size: 0.95rem; }
+.tick.undo:active { background: var(--gold); border-color: var(--gold); color: #fff; }
+@media (max-width: 560px) {
+  .sheet-lines .sl-head, .sheet-lines .sl-row { grid-template-columns: 1.3rem minmax(0, 1fr) 1.8rem 4rem 2.1rem 2.1rem; }
+}

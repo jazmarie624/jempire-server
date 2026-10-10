@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 20: Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 21: take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 20 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 21 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
@@ -162,7 +162,7 @@
 
         <div class="sheet-lines">
           <div class="sl-head">
-            <span>#</span><span>Date · Job #</span><span>Name</span><span>S/NS</span><span class="right">Amount</span><span class="center">✓</span>
+            <span>#</span><span>Date · Job #</span><span>Name</span><span>S/NS</span><span class="right">Amount</span><span class="center">✓</span><span class="center">↩</span>
           </div>
           ${ls.length ? ls.map((j, i) => `
             <div class="sl-row ${!Number(j.price) ? "zero" : ""}">
@@ -172,6 +172,7 @@
               <span class="sl-sn ${j.outcome === "Served" ? "ok" : ""}">${j.outcome === "Served" ? "S" : "NS"}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.price != null && Number(j.price) ? Number(j.price).toFixed(2) : ""}" data-price="${j.id}" aria-label="Amount for ${esc(j.person || "job")}"></span>
               <span class="center"><button class="tick ${j.chk_client_app ? "on" : ""}" data-tick="${j.id}" aria-label="Entered in their app">${j.chk_client_app ? "✓" : "·"}</button></span>
+              <span class="center"><button class="tick undo" data-unserve="${j.id}" aria-label="Put ${esc(j.person || "this job")} back on the route">↩</button></span>
             </div>`).join("")
           : `<p class="muted center pad">Nothing on this sheet yet. Tap Served or Non-Served out on the route and it lands here.</p>`}
         </div>
@@ -208,6 +209,20 @@
       await J().db.from("jes_jobs").update({ chk_client_app: !j.chk_client_app }).eq("id", id);
       j.chk_client_app = !j.chk_client_app;
       b.classList.toggle("on"); b.textContent = j.chk_client_app ? "✓" : "·";
+    });
+    // Tapped Served by mistake? Put it straight back on the route.
+    document.querySelectorAll("[data-unserve]").forEach((b) => b.onclick = async () => {
+      const id = b.getAttribute("data-unserve");
+      const j = O.jobs.find((x) => x.id === id);
+      if (!confirm(`Take ${j.person || "this job"} off the ${sheet.company} sheet and put it back on today's route?\n\nUse this if you tapped Served by mistake.`)) return;
+      const { error } = await J().db.from("jes_jobs").update({
+        sheet_id: null, outcome: null, done_at: null, status: "Active",
+        on_today: true, route_order: null
+      }).eq("id", id);
+      if (error) { J().toast("Not changed: " + error.message); return; }
+      J().toast((j.person || "Job") + " is back on the route");
+      J().refreshBadges && J().refreshBadges();
+      await load(); openSheet(sheetId);
     });
     document.querySelectorAll("[data-job]").forEach((s) => s.onclick = () =>
       window.JES_JOBS && window.JES_JOBS.openJob(s.getAttribute("data-job")));
