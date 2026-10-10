@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — jobs.js (version 13: two-line rows — flags first, address under the name)
+// J EMPIRE SERVER — jobs.js (version 19: Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
   const J = () => window.JES;
@@ -7,15 +7,19 @@
   const byId = (id) => document.getElementById(id);
 
   const PAPER_CLIENTS = ["ProVest", "Userve"];
-  const waitingPapers = (j) => j.status === "Active" && PAPER_CLIENTS.includes(j.client) && j.has_papers === false;
+  const waitingPapers = (j) => j.status === "Active" && j.has_papers === false;
   function flagChips(j) {
     const out = [];
-    if (j.service === "Rush") out.push(`<span class="flag-chip rush">⚡ Rush</span>`);
+    const dm = dueMark(j);
+    if (dm) out.push(dm.replace(/class="m /g, 'class="flag-chip '));
+    if (j.job_type) out.push(`<span class="flag-chip ${/expedit|rush|same.?day|asap|priority/i.test(j.job_type) ? "rush" : "type"}">📌 ${J().esc(j.job_type)}</span>`);
+    if (j.service === "Rush" && !j.job_type) out.push(`<span class="flag-chip rush">⚡ Rush</span>`);
     if (j.is_foreclosure) out.push(`<span class="flag-chip fore">📚 Foreclosure${(j.packets || 1) > 1 ? " ×" + j.packets : ""}</span>`);
     if (j.is_business) out.push(`<span class="flag-chip biz">🏢 Business · 10–12 / 2–4</span>`);
     if (waitingPapers(j)) out.push(`<span class="flag-chip paper">📄 Waiting on papers</span>`);
     return out.join(" ");
   }
+  const urgent = (j) => { const d = daysLeft(j); return (j.service === "Rush" || (d != null && d <= 1)) ? 1 : 0; };
   const needsAddress = (j) => !j.address || !P().hasZip(j.address) || !j.county;
   const isDone = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
 
@@ -81,13 +85,41 @@
     drawList();
   }
 
+  // The job type Proof gives us (2 Day Post / Expedited / Standard) carries a
+  // deadline, so it rides on the front of every row with the countdown next to it.
+  function typeMark(j) {
+    if (!j.job_type) return "";
+    const t = String(j.job_type);
+    const hot = /expedit|rush|same.?day|asap|priority/i.test(t);
+    return `<span class="m ${hot ? "rush" : "type"}">📌 ${J().esc(t.toUpperCase())}</span>`;
+  }
+  // Whole calendar days, so a job due tomorrow says tomorrow — not "2 days"
+  function daysLeft(j) {
+    if (!j.due_date) return null;
+    const due = new Date(String(j.due_date).slice(0, 10) + "T00:00:00");
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return Math.round((due.getTime() - today.getTime()) / 864e5);
+  }
+  function dueMark(j) {
+    if (isDone(j)) return "";
+    const d = daysLeft(j);
+    if (d == null) return "";
+    if (d < 0) return `<span class="m late">⏰ OVERDUE</span>`;
+    if (d === 0) return `<span class="m late">⏰ DUE TODAY</span>`;
+    if (d === 1) return `<span class="m late">⏰ DUE TOMORROW</span>`;
+    if (d <= 3) return `<span class="m due">⏰ ${d} DAYS LEFT</span>`;
+    return "";
+  }
+
   function jobLine(j) {
     const { esc, money } = J();
     const red = !isDone(j) && needsAddress(j);
     const wait = waitingPapers(j);
     const cls = red ? "is-red" : wait || j.status === "On Hold" ? "is-hold" : isDone(j) ? "is-done" : "is-green";
     const marks = [
-      j.service === "Rush" ? `<span class="m rush">⚡ RUSH</span>` : "",
+      dueMark(j),
+      typeMark(j),
+      j.service === "Rush" && !j.job_type ? `<span class="m rush">⚡ RUSH</span>` : "",
       j.is_foreclosure ? `<span class="m fore">📚 ${(j.packets || 1) > 1 ? "×" + j.packets : "FORECL"}</span>` : "",
       j.is_business ? `<span class="m biz">🏢 10–12 / 2–4</span>` : "",
       wait ? `<span class="m pap">📄 NO PAPERS</span>` : "",
@@ -151,14 +183,19 @@
     });
   }
 
-  const H_CLIENTS = ["ProVest", "Userve", "Ody's", "ABC Legal", "Private"];
+  const SHORT = { "Accurate Serve": "Accurate", "Legal Serve USA": "Legal USA", "Lynx Legal": "Lynx" };
+  const shortName = (c) => SHORT[c] || c;
+  const H_CLIENTS = ["ProVest", "Userve", "Ody's", "Accurate Serve", "Proof", "Lynx Legal", "Legal Serve USA", "Private"];
   function moneyStatus(j) {
-    const inv = j.invoice_id && JS.invs[j.invoice_id];
-    if (inv && inv.status === "Paid") return { cls: "st-paid", t: "Paid ✓" + (inv.paid_on ? " " + fmtDate(inv.paid_on).slice(0, 5) : "") };
-    if (inv) return { cls: "st-pending", t: "Billed · pending" };
+    if (j.billed != null && j.paid_amount != null && Number(j.paid_amount) >= Number(j.billed))
+      return { cls: "st-paid", t: "Paid ✓" + (j.paid_on ? " " + fmtDate(j.paid_on).slice(0, 5) : "") };
+    if (j.billed != null && j.paid_amount != null)
+      return { cls: "st-unbilled", t: "SHORT PAID" };
+    if (j.billed != null) return { cls: "st-pending", t: "Submitted · waiting" };
+    if (j.sheet_id) return { cls: "st-pending", t: "On the open sheet" };
     if (j.paid_upfront) return { cls: "st-paid", t: "Paid upfront" };
-    if (isDone(j) && j.client === "ABC Legal") return { cls: "st-paid", t: "Done · ABC pays in app" };
-    if (isDone(j)) return { cls: "st-unbilled", t: "Done · NOT billed" };
+    if (isDone(j)) return { cls: "st-unbilled", t: "Done · not on a sheet" };
+    if (j.in_attempts) return { cls: "st-hold", t: `In Attempts · ${j.attempt_count || 0}/5` };
     if (j.status === "On Hold") return { cls: "st-hold", t: "On hold" };
     return { cls: "st-active", t: `Active · attempt ${j.attempt_count || 0}/5` };
   }
@@ -182,14 +219,14 @@
         .sort((a, b) => new Date(b.done_at || b.created_at) - new Date(a.done_at || a.created_at));
       return { c, jobs };
     });
-    byId("jColPick").innerHTML = cols.map(({ c, jobs }) => `<button class="chip ${c === JS.hcol ? "on" : ""}" data-hcol="${esc(c)}">${esc(c === "ABC Legal" ? "ABC" : c)} (${jobs.length})</button>`).join("");
+    byId("jColPick").innerHTML = cols.map(({ c, jobs }) => `<button class="chip ${c === JS.hcol ? "on" : ""}" data-hcol="${esc(c)}">${esc(shortName(c))} (${jobs.length})</button>`).join("");
     byId("jColPick").onclick = (e) => { const b = e.target.closest("[data-hcol]"); if (b) { JS.hcol = b.dataset.hcol; drawList(); } };
     const monthOf = (j) => new Date(j.done_at || j.created_at).toLocaleDateString([], { month: "long", year: "numeric" });
     byId("jBody").innerHTML = `${q ? `<p class="muted small">Showing matches for “${esc(JS.q)}”.</p>` : ""}<div class="job-cols five">${cols.map(({ c, jobs }) => {
       let last = "";
       const total = jobs.reduce((a, j) => a + Number(j.price || 0), 0);
       return `<div class="job-col hist-col ${c === JS.hcol ? "phone-on" : ""}">
-        <div class="col-head"><div><h2>${esc(c === "ABC Legal" ? "ABC" : c)}</h2><div class="col-sub">${jobs.length} job${jobs.length === 1 ? "" : "s"} · ${money(total)}</div></div></div>
+        <div class="col-head"><div><h2>${esc(shortName(c))}</h2><div class="col-sub">${jobs.length} job${jobs.length === 1 ? "" : "s"} · ${money(total)}</div></div></div>
         <div class="col-list">${jobs.length ? jobs.map((j) => { const m = monthOf(j); const head = m !== last ? `<div class="month-head">${esc(m)}</div>` : ""; last = m; return head + histCard(j); }).join("") : `<p class="muted small center">No jobs.</p>`}</div>
       </div>`;
     }).join("")}</div>`;
@@ -386,7 +423,9 @@
     county: localStorage.getItem("jes_route_county") || "Osceola",
     start: localStorage.getItem("jes_route_start") || "here",
     started: false, here: null, watchId: null, dismissed: new Set(),
-    map: null, stops: [], all: []
+    map: null, stops: [], all: [],
+    miles: Number(localStorage.getItem("jes_route_miles") || 0),
+    lastPt: JSON.parse(localStorage.getItem("jes_route_lastpt") || "null")
   };
   RS.started = localStorage.getItem("jes_route_started") === todayKey() + "|" + RS.county;
   function getHere() {
@@ -529,6 +568,7 @@
                 ? `<button class="btn ghost" id="rEnd">■ End route</button>`
                 : `<button class="btn go" id="rGo">▶ Start route</button>`}
               <button class="btn ghost" id="rBest">Re-sort (save gas)</button>
+              <button class="btn ghost" id="rLine">📋 Lineup</button>
               <button class="btn ghost" id="rPrint">Print</button>
             </div>
 
@@ -550,6 +590,7 @@
     if (byId("rGo")) byId("rGo").onclick = startRoute;
     if (byId("rEnd")) byId("rEnd").onclick = endRoute;
     byId("rPrint").onclick = printRoute;
+    byId("rLine").onclick = drawLineup;
     await loadStops();
     if (RS.started) startWatch();
   }
@@ -563,10 +604,33 @@
     J().toast(RS.start === "here" && RS.here ? "Route started from where you are ✓" : "Route started from home ✓");
     drawRoute();
   }
-  function endRoute() {
+  async function endRoute() {
     if (!confirm("End today's route? Stops you haven't done stay on today's list.")) return;
+
+    // Add the drive home, bank the day's miles, then clear the counter
+    let total = RS.miles;
+    if (RS.lastPt) { const home = await homePoint(); if (home) total += miles(RS.lastPt, home); }
+    const done = RS.all.filter((j) => j.done_at && String(j.done_at).slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+    if (total > 0.5) {
+      const rateRow = await J().db.from("jes_settings").select("value").eq("key", "mileage_rate").maybeSingle();
+      const rate = rateRow.data ? Number(rateRow.data.value) : 0.7;
+      await J().db.from("jes_expenses").insert({
+        kind: "Miles", miles: Number(total.toFixed(1)), amount: Number((total * rate).toFixed(2)),
+        county: RS.county, stops: done, note: `Route — ${RS.county}, ${done} stop${done === 1 ? "" : "s"}`
+      });
+      J().toast(`${total.toFixed(1)} miles banked · ${J().money(total * rate)} off your taxes`);
+    }
+    RS.miles = 0; RS.lastPt = null;
+    localStorage.removeItem("jes_route_miles");
+    localStorage.removeItem("jes_route_lastpt");
     localStorage.removeItem("jes_route_started");
-    stopWatch(); drawRoute();
+    stopWatch();
+
+    const waiting = RS.all.filter((j) => j.in_attempts).length;
+    if (waiting && confirm(`${waiting} job${waiting > 1 ? "s are" : " is"} in the Attempts folder. Pick what to retry tomorrow now?`)) {
+      J().go("attempts"); return;
+    }
+    drawRoute();
   }
 
   async function loadStops() {
@@ -576,7 +640,7 @@
     const inCounty = today.filter((j) => j.county === RS.county);
     const noAddr = inCounty.filter(needsAddress);
     RS.stops = inCounty.filter((j) => !needsAddress(j))
-      .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999) || (b.service === "Rush") - (a.service === "Rush"));
+      .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999) || urgent(b) - urgent(a));
     const otherCounty = today.filter((j) => j.county && j.county !== RS.county).length;
 
     const msgs = [];
@@ -702,31 +766,74 @@
     if (!quiet) J().toast(`Order set from ${RS.start === "here" && RS.here ? "where you are" : "home"} · about ${total.toFixed(1)} miles (straight-line)`);
   }
 
+  // Why a non-serve happened — one tap, because you'll have forgotten by tonight
+  function askReason() {
+    return new Promise((resolve) => {
+      const reasons = ["Does not live there", "Moved", "Vacant", "Bad address", "Refused / wrong person"];
+      const back = byId("sheetBack") || document.body.appendChild(Object.assign(document.createElement("div"), { id: "sheetBack", className: "sheet-back" }));
+      back.hidden = false;
+      back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="nsT">
+        <h2 id="nsT">Why couldn't it be served?</h2>
+        <p class="muted">This is what goes in their app. It pays the same either way.</p>
+        <div class="reasons">${reasons.map((r) => `<button class="pick wide" data-r="${J().esc(r)}">${J().esc(r)}</button>`).join("")}</div>
+        <div class="sheet-btns"><button class="btn ghost" id="nsCancel">Go back</button></div>
+      </div>`;
+      const close = (v) => { back.hidden = true; back.innerHTML = ""; resolve(v); };
+      back.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => close(b.getAttribute("data-r")));
+      byId("nsCancel").onclick = () => close(null);
+    });
+  }
+
   async function act(kind, j) {
     const note = (byId("rNote") && byId("rNote").value.trim()) || "";
-    const patch = {};
+    const before = { status: j.status, attempt_count: j.attempt_count || 0, done_at: j.done_at,
+      on_today: true, in_attempts: !!j.in_attempts, sheet_id: j.sheet_id || null, outcome: j.outcome || null, ns_reason: j.ns_reason || null };
+    const patch = { on_today: false, route_order: null };
+    let landed = null;
+
     if (kind === "Attempt") {
+      // Out of today's route, into the Attempts folder. No popups, no 5-attempt rule.
       patch.attempt_count = (j.attempt_count || 0) + 1;
-      patch.on_today = false; patch.route_order = null;
-      if (patch.attempt_count >= 5 && confirm("That's attempt 5. Mark this job Non-Serve Complete (done and billable)?")) {
-        patch.status = "Non-Serve Complete"; patch.done_at = new Date().toISOString();
-      }
-    } else if (kind === "Served") {
-      patch.status = "Served"; patch.done_at = new Date().toISOString(); patch.on_today = false; patch.route_order = null;
+      patch.in_attempts = true;
+      patch.last_attempt_at = new Date().toISOString();
     } else {
-      if ((j.attempt_count || 0) < 4 && !confirm(`Only ${j.attempt_count || 0} attempt(s) logged. Mark Non-Served anyway?`)) return;
-      patch.status = "Non-Serve Complete"; patch.done_at = new Date().toISOString(); patch.on_today = false; patch.route_order = null;
-      if (kind === "Non-Serve") patch.attempt_count = Math.max(5, (j.attempt_count || 0) + 1);
+      // Served AND Non-Served both pay in full and both go straight onto the sheet.
+      let reason = null;
+      if (kind !== "Served") {
+        reason = await askReason();
+        if (!reason) return;
+        patch.ns_reason = reason;
+      }
+      const sheet = window.JES_OFFICE && await window.JES_OFFICE.sheetFor(j.client);
+      if (!sheet) { J().toast("Couldn't open the " + (j.client || "client") + " sheet — nothing was changed."); return; }
+      patch.sheet_id = sheet.id;
+      patch.outcome = kind === "Served" ? "Served" : "Non-Serve";
+      patch.status = kind === "Served" ? "Served" : "Non-Serve Complete";
+      patch.done_at = new Date().toISOString();
+      patch.in_attempts = false;
+      landed = sheet;
     }
+
     if (!(await updateJob(j.id, patch))) return;
+
+    // Bank the miles as you go — this is a tax deduction you were losing
+    if (j.lat != null) {
+      const from = RS.lastPt || await homePoint();
+      if (from) RS.miles += miles(from, j);
+      RS.lastPt = { lat: j.lat, lng: j.lng };
+      localStorage.setItem("jes_route_miles", String(RS.miles));
+      localStorage.setItem("jes_route_lastpt", JSON.stringify(RS.lastPt));
+    }
+
     await logAttempt(j, kind === "Attempt" ? "Attempt" : kind === "Served" ? "Served" : "Non-Serve", note);
-    RS.lastAction = { job: j, kind, before: { status: j.status, attempt_count: j.attempt_count || 0, done_at: j.done_at, on_today: true } };
+    if (landed) landed = await window.JES_OFFICE.sheetTotal(landed.id);
+    RS.lastAction = { job: j, kind, sheet: landed, before };
     RS.stops = RS.stops.filter((x) => x.id !== j.id);
     if (RS.started && RS.stops.filter((x) => x.lat != null).length > 1) {
       const here = RS.here || await getHere() || (j.lat != null ? { lat: j.lat, lng: j.lng } : null);
       if (here) {
         const ordered = bestOrder(here, RS.stops.filter((x) => x.lat != null));
-        RS.stops = ordered.filter((x) => x.service === "Rush").concat(ordered.filter((x) => x.service !== "Rush"), RS.stops.filter((x) => x.lat == null));
+        RS.stops = ordered.filter(urgent).concat(ordered.filter((x) => !urgent(x)), RS.stops.filter((x) => x.lat == null));
       }
     }
     await saveOrder();
@@ -739,12 +846,20 @@
   function showDid() {
     const box = byId("rDid"); if (!box || !RS.lastAction) return;
     const { esc } = J();
-    const { job, kind } = RS.lastAction;
+    const { job, kind, sheet } = RS.lastAction;
     const word = kind === "Served" ? "SERVED ✓" : kind === "Attempt" ? "ATTEMPT LOGGED" : "NON-SERVED ✓";
     const left = RS.stops.length;
+    const paid = sheet
+      ? `<div class="did-sheet">Added to the <b>${esc(job.client || "")}</b> sheet · ${J().money(job.price || 0)}<br>
+           <span class="small">Sheet total now ${J().money(sheet.total)} · ${sheet.count} job${sheet.count === 1 ? "" : "s"}</span></div>`
+      : kind === "Attempt"
+        ? `<div class="did-sheet">Attempt ${(job.attempt_count || 0) + 1} · moved to the <b>Attempts</b> folder<br>
+             <span class="small">Off today's route. Pick it up again tonight.</span></div>`
+        : "";
     box.innerHTML = `<div class="did ${kind === "Served" ? "ok" : kind === "Attempt" ? "att" : "non"}">
       <div class="did-word">${word}</div>
       <div class="did-who">${esc(job.person || "")} ${esc(job.address || "")}</div>
+      ${paid}
       <div class="row-gap">
         <button class="btn go grow" id="didNext">${left ? `Next stop → (${left} left)` : "All stops done today 🎉"}</button>
         <button class="btn ghost" id="didUndo">Undo</button>
@@ -753,7 +868,8 @@
     byId("didNext").onclick = () => { RS.lastAction = null; box.innerHTML = ""; window.scrollTo({ top: 0, behavior: "smooth" }); };
     byId("didUndo").onclick = async () => {
       const { job: j, before } = RS.lastAction;
-      await updateJob(j.id, { status: before.status, attempt_count: before.attempt_count, done_at: before.done_at, on_today: true });
+      await updateJob(j.id, { status: before.status, attempt_count: before.attempt_count, done_at: before.done_at,
+        on_today: true, in_attempts: before.in_attempts, sheet_id: before.sheet_id, outcome: before.outcome, ns_reason: before.ns_reason });
       const { data } = await J().db.from("jes_attempts").select("id").eq("job_id", j.id).order("at", { ascending: false }).limit(1);
       if (data && data[0]) await J().db.from("jes_attempts").delete().eq("id", data[0].id);
       Object.assign(j, before);
@@ -766,7 +882,7 @@
 
   function drawAddMore() {
     const { esc } = J();
-    const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && j.county === RS.county && !needsAddress(j) && !waitingPapers(j));
+    const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && !j.in_attempts && j.county === RS.county && !needsAddress(j) && !waitingPapers(j));
     byId("rAddList").innerHTML = pool.length ? pool.map((j) => `
       <div class="add-line">
         <div class="draft-text"><div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div><div class="draft-addr">${esc(j.address)}</div></div>
@@ -777,6 +893,73 @@
     });
   }
 
+  // ---------- Lineup: the numbered list for sticky-noting the papers ----------
+  function lineKey() { return "jes_lineup_" + todayKey() + "_" + RS.county; }
+  function lineDone() {
+    try { return new Set(JSON.parse(localStorage.getItem(lineKey()) || "[]")); } catch (e) { return new Set(); }
+  }
+  function lineSave(set) {
+    try { localStorage.setItem(lineKey(), JSON.stringify(Array.from(set))); } catch (e) {}
+  }
+
+  function drawLineup() {
+    const { esc } = J();
+    if (!RS.stops.length) { J().toast("Build the route first"); return; }
+    const done = lineDone();
+    const back = byId("sheetBack");
+    back.hidden = false;
+    const rows = () => RS.stops.map((j, i) => `
+      <label class="lu-row ${done.has(j.id) ? "on" : ""}">
+        <span class="lu-num">${i + 1}</span>
+        <span class="lu-text">
+          <span class="lu-name">${esc(j.person || "(no name)")}</span>
+          <span class="lu-sub">${esc(j.address || "")}</span>
+          <span class="lu-sub2">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}${j.has_papers === false ? " · 📄 NO PAPERS" : ""}</span>
+        </span>
+        <input type="checkbox" data-lu="${j.id}" ${done.has(j.id) ? "checked" : ""} aria-label="Sticky note ${i + 1} written">
+      </label>`).join("");
+
+    const paint = () => {
+      back.innerHTML = `<div class="sheet lineup" role="dialog" aria-modal="true" aria-labelledby="luT">
+        <h2 id="luT">Lineup · ${esc(RS.county)}</h2>
+        <p class="muted">Write these numbers on your sticky notes. ${RS.stops.length} stop${RS.stops.length === 1 ? "" : "s"}, in the order you'll drive them.</p>
+        <div class="lu-list">${rows()}</div>
+        <div class="sheet-btns">
+          <button class="btn ghost" id="luPrint">🖨 Print the lineup</button>
+          <button class="btn go" id="luClose">Done</button>
+        </div>
+      </div>`;
+      back.querySelectorAll("[data-lu]").forEach((b) => b.onchange = () => {
+        const id = b.getAttribute("data-lu");
+        b.checked ? done.add(id) : done.delete(id);
+        lineSave(done);
+        b.closest(".lu-row").classList.toggle("on", b.checked);
+      });
+      byId("luClose").onclick = () => { back.hidden = true; back.innerHTML = ""; };
+      byId("luPrint").onclick = () => { back.hidden = true; back.innerHTML = ""; printLineup(); };
+    };
+    paint();
+  }
+
+  // One line per stop, several to a page — black ink
+  function printLineup() {
+    const { esc } = J();
+    const d = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    byId("printSheet").innerHTML = `
+      <div class="print-head"><b>Lineup · ${esc(RS.county)} County</b><span>${esc(d)} · ${RS.stops.length} stops</span></div>
+      <table class="lu-print">
+        <thead><tr><th class="lup-n">#</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">CLIENT · JOB #</th><th class="lup-x">✓</th></tr></thead>
+        <tbody>${RS.stops.map((j, i) => `<tr>
+          <td class="lup-n">${i + 1}</td>
+          <td><b>${esc(j.person || "(no name)")}</b></td>
+          <td>${esc(j.address || "")}</td>
+          <td class="lup-c">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</td>
+          <td class="lup-x"></td>
+        </tr>`).join("")}</tbody>
+      </table>`;
+    window.print();
+  }
+
   // ---------- one-page printed route (black ink) ----------
   function printRoute() {
     const { esc } = J();
@@ -785,7 +968,7 @@
       <div class="print-head"><b>Route · ${esc(RS.county)} County</b><span>${esc(d)} · ${RS.stops.length} stops</span></div>
       <div class="print-grid">${RS.stops.map((j, i) => `
         <div class="print-box">
-          <div class="pb-top"><span class="pb-num">${i + 1}</span><span>${j.service === "Rush" ? `<span class="pb-rush">RUSH</span> ` : ""}${j.is_foreclosure ? `<span class="pb-rush">FORECL ×${j.packets || 1}</span> ` : ""}${j.is_business ? `<span class="pb-rush">BUS 10-12/2-4</span>` : ""}</span></div>
+          <div class="pb-top"><span class="pb-num">${i + 1}</span><span>${(() => { const d = daysLeft(j); return d != null && d <= 3 ? `<span class="pb-rush">${d < 0 ? "OVERDUE" : d === 0 ? "DUE TODAY" : d === 1 ? "DUE TOMORROW" : d + " DAYS"}</span> ` : ""; })()}${j.job_type ? `<span class="pb-rush">${esc(j.job_type.toUpperCase())}</span> ` : j.service === "Rush" ? `<span class="pb-rush">RUSH</span> ` : ""}${j.is_foreclosure ? `<span class="pb-rush">FORECL ×${j.packets || 1}</span> ` : ""}${j.is_business ? `<span class="pb-rush">BUS 10-12/2-4</span>` : ""}</span></div>
           <div class="pb-name">${esc(j.person || "(no name)")}</div>
           <div>${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</div>
           <div>${esc(j.address)}</div>
@@ -795,5 +978,162 @@
     window.print();
   }
 
-  window.JES_JOBS = { drawJobs, drawRoute, openJob };
+  // =====================================================================
+  // ATTEMPTS FOLDER — nobody home. Pick what to go back for, by county.
+  // =====================================================================
+  const AS = { county: localStorage.getItem("jes_att_county") || "Osceola", picked: new Set() };
+
+  function whenTxt(iso) {
+    if (!iso) return "";
+    const d = new Date(iso), now = new Date();
+    const t = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "");
+    const sameDay = d.toDateString() === now.toDateString();
+    const yday = new Date(now.getTime() - 864e5).toDateString() === d.toDateString();
+    return sameDay ? t : yday ? "yesterday " + t : d.toLocaleDateString([], { month: "numeric", day: "numeric" }) + " " + t;
+  }
+
+  async function drawAttempts() {
+    const { esc } = J();
+    document.getElementById("screen").innerHTML = `
+      <section class="attempts">
+        <div class="att-head">
+          <h1>Attempts</h1>
+          <p class="muted">Nobody home — pick what to go back for.</p>
+        </div>
+        <div class="chips" id="attChips"></div>
+        <div id="attList" class="att-list"><p class="muted">Loading…</p></div>
+        <div id="attFoot" class="att-foot"></div>
+      </section>`;
+    await loadAttempts();
+  }
+
+  async function loadAttempts() {
+    const { esc } = J();
+    const all = (await fetchJobs()).filter((j) => j.in_attempts);
+    AS.all = all;
+
+    const counts = { Osceola: 0, Orange: 0, Other: 0 };
+    all.forEach((j) => { counts[j.county === "Osceola" || j.county === "Orange" ? j.county : "Other"]++; });
+    document.getElementById("attChips").innerHTML = ["Osceola", "Orange", "Other"]
+      .filter((c) => counts[c] || c === AS.county)
+      .map((c) => `<button class="chip ${c === AS.county ? "on" : ""}" data-cty="${c}">${c} ${counts[c]}</button>`).join("");
+    document.querySelectorAll("[data-cty]").forEach((b) => b.onclick = () => {
+      AS.county = b.getAttribute("data-cty");
+      localStorage.setItem("jes_att_county", AS.county);
+      AS.picked.clear();
+      loadAttempts();
+    });
+
+    // Closest to 5 attempts on top — those are nearly paid, you just have to go back
+    const mine = all.filter((j) => (j.county === AS.county) || (AS.county === "Other" && j.county !== "Osceola" && j.county !== "Orange"))
+      .sort((a, b) => (b.attempt_count || 0) - (a.attempt_count || 0) ||
+        new Date(a.last_attempt_at || 0) - new Date(b.last_attempt_at || 0));
+
+    const list = document.getElementById("attList");
+    if (!mine.length) {
+      list.innerHTML = `<div class="card soft center"><p>Nothing waiting in ${esc(AS.county)}.</p><p class="muted small">Jobs land here when you tap Attempted on the route.</p></div>`;
+      document.getElementById("attFoot").innerHTML = "";
+      return;
+    }
+
+    list.innerHTML = mine.map((j) => {
+      const n = j.attempt_count || 0;
+      const hot = n >= 4;
+      const note = (j.notes || "").split("\n").pop().slice(0, 48);
+      return `<label class="att-row ${hot ? "hot" : ""}">
+        <input type="checkbox" data-pick="${j.id}" ${AS.picked.has(j.id) ? "checked" : ""}>
+        <span class="att-text">
+          <span class="att-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
+          <span class="att-addr">${esc(j.address || "(no address)")} · ${esc(j.client || "")}</span>
+          <span class="att-when ${hot ? "hot" : ""}">Attempt ${n} of 5${j.last_attempt_at ? ` · last ${esc(whenTxt(j.last_attempt_at))}` : ""}${note ? " — " + esc(note) : ""}</span>
+        </span>
+        <span class="att-btns">
+          <button class="icon-btn" data-note="${j.id}" aria-label="Write the attempt note for ${esc(j.person || "job")}">📝</button>
+          <button class="icon-btn" data-open="${j.id}" aria-label="Open ${esc(j.person || "job")}">✎</button>
+        </span>
+      </label>`;
+    }).join("");
+
+    list.querySelectorAll("[data-pick]").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const id = b.getAttribute("data-pick");
+      b.checked ? AS.picked.add(id) : AS.picked.delete(id);
+      drawAttFoot();
+    });
+    list.querySelectorAll("[data-open]").forEach((b) => b.onclick = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      openJob(b.getAttribute("data-open"));
+    });
+    list.querySelectorAll("[data-note]").forEach((b) => b.onclick = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      writeNote(mine.find((x) => x.id === b.getAttribute("data-note")));
+    });
+    drawAttFoot();
+  }
+
+  // ---------- the attempt note, written in your words ----------
+  async function writeNote(j) {
+    if (!j) return;
+    const { esc } = J();
+    const { data } = await J().db.from("jes_attempts").select("at,kind,note")
+      .eq("job_id", j.id).order("at", { ascending: true });
+    const tries = (data || []).filter((a) => a.kind === "Attempt");
+    const last = tries[tries.length - 1];
+    const when = new Date(last ? last.at : (j.last_attempt_at || Date.now()));
+    const dateTxt = when.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
+    const timeTxt = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const who = j.person || "the person named in the papers";
+    const extra = (last && last.note) ? " " + last.note.replace(/\s+/g, " ").trim().replace(/([^.!?])$/, "$1.") : "";
+
+    const para = `On ${dateTxt} at ${timeTxt}, I attempted service on ${who} at ${j.address || "the address provided"}. ` +
+      `I knocked and announced myself and waited for a response. No one came to the door and I was unable to make contact.${extra} ` +
+      `This was attempt ${j.attempt_count || tries.length || 1} of 5. I will attempt service again at a different time of day.`;
+
+    const back = byId("sheetBack") ||
+      document.body.appendChild(Object.assign(document.createElement("div"), { id: "sheetBack", className: "sheet-back" }));
+    back.hidden = false;
+    back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="anT">
+      <h2 id="anT">Attempt note</h2>
+      <p class="muted">Edit anything that isn't right, then copy it into their app.</p>
+      <textarea id="anText" rows="7" class="paste">${esc(para)}</textarea>
+      ${tries.length > 1 ? `<p class="muted small">All ${tries.length} attempts on this job: ${tries.map((a) =>
+        new Date(a.at).toLocaleDateString([], { month: "numeric", day: "numeric" }) + " " +
+        new Date(a.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })).join(" · ")}</p>` : ""}
+      <div class="sheet-btns"><button class="btn ghost" id="anClose">Done</button><button class="btn go" id="anCopy">Copy</button></div>
+    </div>`;
+    const close = () => { back.hidden = true; back.innerHTML = ""; };
+    byId("anClose").onclick = close;
+    byId("anCopy").onclick = async () => {
+      const t = byId("anText");
+      t.select(); t.setSelectionRange(0, 99999);
+      try { await navigator.clipboard.writeText(t.value); J().toast("Note copied"); }
+      catch (e) { document.execCommand("copy"); J().toast("Note copied"); }
+    };
+  }
+
+  function drawAttFoot() {
+    const n = AS.picked.size;
+    document.getElementById("attFoot").innerHTML = `
+      <p class="muted small">Closest to 5 attempts sits on top — those are nearly paid, you just have to go back.</p>
+      <button class="btn go wide" id="attGo" ${n ? "" : "disabled"}>${n ? `Add ${n} to tomorrow · ${J().esc(AS.county)}` : "Tick the ones you'll go back for"}</button>`;
+    const g = document.getElementById("attGo");
+    if (g) g.onclick = addToTomorrow;
+  }
+
+  async function addToTomorrow() {
+    const ids = Array.from(AS.picked);
+    if (!ids.length) return;
+    const btn = document.getElementById("attGo");
+    btn.disabled = true; btn.textContent = "Adding…";
+    const { error } = await J().db.from("jes_jobs")
+      .update({ on_today: true, in_attempts: false, route_order: null })
+      .in("id", ids);
+    if (error) { J().toast("Not added: " + error.message); btn.disabled = false; drawAttFoot(); return; }
+    AS.picked.clear();
+    J().toast(`${ids.length} back on the ${AS.county} route`);
+    J().refreshBadges && J().refreshBadges();
+    loadAttempts();
+  }
+
+  window.JES_JOBS = { drawJobs, drawRoute, drawAttempts, openJob };
 })();

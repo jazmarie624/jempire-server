@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — app.js (version 12: word-only tabs)
+// J EMPIRE SERVER — app.js (version 15: Attempts + Sheets replace Done + Invoices)
 (function () {
   "use strict";
 
@@ -52,32 +52,36 @@
     { id: "add",      label: "Add Jobs" },
     { id: "jobs",     label: "Jobs" },
     { id: "route",    label: "Route" },
-    { id: "done",     label: "Done" },
-    { id: "invoices", label: "Invoices" },
+    { id: "attempts", label: "Attempts" },
+    { id: "sheets",   label: "Sheets" },
     { id: "money",    label: "Money" }
   ];
-  // iPhone bottom bar keeps it short; steps 4–6 live under "Office"
+  // iPhone bottom bar keeps it to five; Attempts is one tap from Jobs and from the end of a route
   const PHONE_TABS = [
     { id: "home", label: "Home" },
     { id: "add", label: "Add" },
     { id: "jobs", label: "Jobs" },
     { id: "route", label: "Route" },
-    { id: "office", label: "Office" }
+    { id: "sheets", label: "Sheets" }
   ];
   // Red number badges: how many jobs are waiting at each step
   let BADGE = {};
   async function refreshBadges() {
     if (!db) return;
-    const { data } = await db.from("jes_jobs").select("status,on_today,address,county,client,chk_client_app,chk_proof,chk_price,invoice_id,paid_upfront,has_papers");
+    const [jobsRes, sheetRes] = await Promise.all([
+      db.from("jes_jobs").select("status,on_today,address,county,client,has_papers,in_attempts,sheet_id,billed"),
+      db.from("jes_sheets").select("status,paid_on")
+    ]);
+    const data = jobsRes.data;
     if (!data) return;
-    const done = (j) => j.status === "Served" || j.status === "Non-Serve Complete";
+    const sheets = sheetRes.data || [];
     const routable = (j) => j.address && j.county && /\b(?:FL|Florida)\b[\s,]*\d{5}/i.test(j.address);
-    const toCheck = data.filter((j) => done(j) && !(j.chk_client_app && j.chk_proof && j.chk_price)).length;
-    const toBill = data.filter((j) => done(j) && j.chk_client_app && j.chk_proof && j.chk_price && !j.invoice_id && !j.paid_upfront && j.client !== "ABC Legal").length;
     BADGE = {
-      jobs: data.filter((j) => j.status === "Active" && !(j.on_today && routable(j))).length,
+      jobs: data.filter((j) => j.status === "Active" && !j.in_attempts && !(j.on_today && routable(j))).length,
       route: data.filter((j) => j.status === "Active" && j.on_today && routable(j) && j.has_papers !== false).length,
-      done: toCheck, invoices: toBill, office: toCheck + toBill
+      attempts: data.filter((j) => j.in_attempts).length,
+      sheets: data.filter((j) => j.sheet_id && j.billed == null).length,
+      money: sheets.filter((s) => s.status === "Closed" && !s.paid_on).length
     };
     drawTabs();
   }
@@ -87,7 +91,7 @@
     const badge = (id) => BADGE[id] ? `<span class="badge" aria-label="${BADGE[id]} waiting">${BADGE[id] > 99 ? "99+" : BADGE[id]}</span>` : "";
     $(".tabs-top").innerHTML = TABS.map((t) =>
       `<button class="tab" data-go="${t.id}" ${t.id === current ? 'aria-current="page"' : ""}>${esc(t.label)}${badge(t.id)}</button>`).join("");
-    const phoneCur = ["done", "invoices", "money", "office"].includes(current) ? "office" : current;
+    const phoneCur = ["money", "office"].includes(current) ? "sheets" : current === "attempts" ? "jobs" : current;
     $(".tabs-bottom").innerHTML = PHONE_TABS.map((t) =>
       `<button class="tab" data-go="${t.id}" ${t.id === phoneCur ? 'aria-current="page"' : ""}><span class="tab-in">${esc(t.label)}${badge(t.id)}</span></button>`).join("");
   }
@@ -108,10 +112,10 @@
       add: () => (window.JES_INTAKE ? window.JES_INTAKE.draw() : comingSoon("add")),
       jobs: () => (window.JES_JOBS ? window.JES_JOBS.drawJobs(filter ? { filter } : null) : comingSoon("jobs")),
       route: () => (window.JES_JOBS ? window.JES_JOBS.drawRoute() : comingSoon("route")),
-      done: () => (window.JES_OFFICE ? window.JES_OFFICE.drawDone() : comingSoon("done")),
-      invoices: () => (window.JES_OFFICE ? window.JES_OFFICE.drawInvoices() : comingSoon("invoices")),
-      money: () => (window.JES_OFFICE ? window.JES_OFFICE.drawMoney() : comingSoon("money")),
-      office: () => (window.JES_OFFICE ? window.JES_OFFICE.drawHub() : comingSoon("money"))
+      attempts: () => (window.JES_JOBS ? window.JES_JOBS.drawAttempts() : comingSoon("attempts")),
+      sheets: () => (window.JES_OFFICE ? window.JES_OFFICE.drawSheets(filter ? { company: filter } : null) : comingSoon("sheets")),
+      money: () => (window.JES_OFFICE ? window.JES_OFFICE.drawMoney(filter ? { company: filter } : null) : comingSoon("money")),
+      office: () => (window.JES_OFFICE ? window.JES_OFFICE.drawSheets() : comingSoon("sheets"))
     };
     (screens[id] || drawHome)(id);
   }
@@ -152,81 +156,96 @@
             <span><span class="choice-title">Out in the Field</span><span class="choice-sub">Paste jobs, build the route, mark Attempted or Served</span></span>
           </button>
           <button class="choice" data-mode="office">${DESK}
-            <span><span class="choice-title">In the Office</span><span class="choice-sub">Verify, invoices, money, printing</span></span>
+            <span><span class="choice-title">In the Office</span><span class="choice-sub">Sheets, printing for Jean, who still owes you</span></span>
           </button>
         </div>
         <div id="alerts"></div>
         <div class="glance" id="glance">
           <button class="tile" data-go="jobs" data-filter="Active"><div class="tile-label">Active jobs ›</div><div class="tile-value">…</div><div class="tile-sub">Ready to route</div></button>
-          <button class="tile" data-go="jobs" data-filter="On Hold"><div class="tile-label">On hold ›</div><div class="tile-value">…</div><div class="tile-sub">Kept, not routed</div></button>
+          <button class="tile" data-go="attempts"><div class="tile-label">Attempts ›</div><div class="tile-value">…</div><div class="tile-sub">Go back another day</div></button>
           <button class="tile red" data-go="jobs" data-filter="Needs address"><div class="tile-label">Need fixing ›</div><div class="tile-value">…</div><div class="tile-sub">Red jobs</div></button>
+          <button class="tile green" data-go="sheets"><div class="tile-label">On open sheets ›</div><div class="tile-value">…</div><div class="tile-sub">Not submitted yet</div></button>
+          <button class="tile red" data-go="money"><div class="tile-label">Owed to me ›</div><div class="tile-value">…</div><div class="tile-sub">Submitted, not paid</div></button>
           <button class="tile green" data-go="money"><div class="tile-label">This week ›</div><div class="tile-value">…</div><div class="tile-sub">Goal $500, Thu to Thu</div></button>
-          <button class="tile red" data-go="invoices"><div class="tile-label">Pending payment ›</div><div class="tile-value">…</div><div class="tile-sub">Unpaid invoices</div></button>
         </div>
       </section>`;
     document.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
       const mode = b.getAttribute("data-mode");
       store.set("jes_mode", mode);
-      go(mode === "field" ? "add" : "money");
+      go(mode === "field" ? "add" : "sheets");
     });
     loadGlance();
   }
 
   async function loadGlance() {
     const tiles = document.querySelectorAll("#glance .tile-value");
-    const [jobsRes, invRes, goalRes] = await Promise.all([
+    const [jobsRes, sheetRes, goalRes] = await Promise.all([
       db.from("jes_jobs").select("*"),
-      db.from("jes_invoices").select("total,status"),
+      db.from("jes_sheets").select("*"),
       db.from("jes_settings").select("value").eq("key", "weekly_goal").maybeSingle()
     ]);
-    if (jobsRes.error || invRes.error) {
+    if (jobsRes.error || sheetRes.error) {
       tiles.forEach((t) => t.textContent = "—");
-      $("#alerts").innerHTML = `<div class="alert">Can't reach your data. Check that this device's setup link was opened and that config.js has your anon key.</div>`;
+      $("#alerts").innerHTML = `<div class="alert">Can't reach your data. If you just ran the new SQL, reload this page. Otherwise check that this device's setup link was opened and that config.js has your anon key.</div>`;
       return;
     }
-    const jobs = jobsRes.data, invs = invRes.data;
+    const jobs = jobsRes.data, sheets = sheetRes.data;
     const ws = weekStart();
-    const open = jobs.filter((j) => j.status === "Active" || j.status === "On Hold");
-    const earned = jobs
-      .filter((j) => (j.status === "Served" || j.status === "Non-Serve Complete") && j.done_at && new Date(j.done_at) >= ws)
-      .reduce((s, j) => s + Number(j.price || 0), 0);
-    const pending = invs.filter((i) => i.status === "Pending").reduce((s, i) => s + Number(i.total || 0), 0);
     const goal = goalRes.data ? Number(goalRes.data.value) : 500;
 
-    tiles[0].textContent = jobs.filter((j) => j.status === "Active").length;
-    tiles[1].textContent = jobs.filter((j) => j.status === "On Hold").length;
-    tiles[2].textContent = open.filter(needsFixing).length;
-    tiles[3].textContent = money(earned);
-    tiles[4].textContent = money(pending);
-    document.querySelectorAll("#glance .tile-sub")[3].textContent = `Goal ${money(goal)}, Thu to Thu`;
+    const onOpenSheet = jobs.filter((j) => j.sheet_id && j.billed == null);
+    const billedJobs = jobs.filter((j) => j.billed != null);
+    const openTotal = onOpenSheet.reduce((s, j) => s + Number(j.price || 0), 0);
+    const owed = billedJobs.reduce((s, j) => s + Math.max(0, Number(j.billed) - Number(j.paid_amount || 0)), 0);
+    const earned = jobs
+      .filter((j) => j.done_at && new Date(j.done_at) >= ws)
+      .reduce((s, j) => s + Number(j.billed != null ? j.billed : j.price || 0), 0);
+
+    tiles[0].textContent = jobs.filter((j) => j.status === "Active" && !j.in_attempts).length;
+    tiles[1].textContent = jobs.filter((j) => j.in_attempts).length;
+    tiles[2].textContent = jobs.filter((j) => (j.status === "Active" || j.status === "On Hold") && needsFixing(j)).length;
+    tiles[3].textContent = money(openTotal);
+    tiles[4].textContent = money(owed);
+    tiles[5].textContent = money(earned);
+    document.querySelectorAll("#glance .tile-sub")[5].textContent = `Goal ${money(goal)}, Thu to Thu`;
 
     // ---- Reminders: nothing is allowed to sit forgotten ----
     const alerts = [];
+    const days = (d) => (new Date(d).getTime() - Date.now()) / 864e5;
+
     const noAddress = jobs.filter((j) => j.status === "Active" && needsFixing(j));
-    if (noAddress.length) alerts.push(`${noAddress.length} saved job${noAddress.length > 1 ? "s are" : " is"} missing an address and can't be routed yet. Tap to fix.`);
+    if (noAddress.length) alerts.push({ go: 'data-go="jobs" data-filter="Needs address"',
+      t: `${noAddress.length} saved job${noAddress.length > 1 ? "s are" : " is"} missing an address and can't be routed yet. Tap to fix.` });
 
-    // Waiting on papers from Jean (ProVest + Userve)
-    const waiting = jobs.filter((j) => j.status === "Active" && ["ProVest", "Userve"].includes(j.client) && j.has_papers === false);
-    const dueSoon = waiting.filter((j) => j.due_date && new Date(j.due_date).getTime() - Date.now() < 3 * 864e5);
-    if (dueSoon.length) alerts.push(`${dueSoon.length} job${dueSoon.length > 1 ? "s" : ""} still waiting on papers ${dueSoon.length > 1 ? "are" : "is"} due within 3 days — ask Jean for ${dueSoon.length > 1 ? "them" : "it"} early.`);
-    if (waiting.length) alerts.push(`${waiting.length} job${waiting.length > 1 ? "s are" : " is"} waiting on papers from Jean.`);
+    // Serve-by date coming up — miss it and the job pays nothing
+    const dueSoon = jobs.filter((j) => j.status === "Active" && !j.outcome && j.due_date && days(j.due_date) <= 2);
+    if (dueSoon.length) alerts.push({ go: 'data-go="jobs" data-filter="Active"',
+      t: `${dueSoon.length} job${dueSoon.length > 1 ? "s are" : " is"} due within 2 days — serve ${dueSoon.length > 1 ? "them" : "it"} or ${dueSoon.length > 1 ? "they don't" : "it doesn't"} pay.` });
 
-    const threeDays = Date.now() - 3 * 864e5;
-    const idle = jobs.filter((j) => j.status === "Active" && !needsFixing(j) && !j.on_today && j.has_papers !== false &&
-      (j.attempt_count || 0) === 0 && j.created_at && new Date(j.created_at).getTime() < threeDays);
-    if (idle.length) alerts.push(`${idle.length} job${idle.length > 1 ? "s have" : " has"} been sitting 3+ days with no attempt and no route. Add to a route or put on hold?`);
+    const nearly = jobs.filter((j) => j.in_attempts && (j.attempt_count || 0) >= 4);
+    if (nearly.length) alerts.push({ go: 'data-go="attempts"',
+      t: `${nearly.length} job${nearly.length > 1 ? "s are" : " is"} on attempt 4 of 5 — one more trip and ${nearly.length > 1 ? "they're" : "it's"} done.` });
 
-    const shortPaid = jobs.filter((j) => Number(j.short_paid || 0) > 0);
-    if (shortPaid.length) alerts.push(`${shortPaid.length} job${shortPaid.length > 1 ? "s were" : " was"} short paid — ${money(shortPaid.reduce((s, j) => s + Number(j.short_paid), 0))} still owed to you (invoice follow-up).`);
+    const waiting = jobs.filter((j) => j.status === "Active" && j.has_papers === false);
+    if (waiting.length) alerts.push({ go: 'data-go="jobs" data-filter="Papers"',
+      t: `${waiting.length} job${waiting.length > 1 ? "s are" : " is"} marked NO PAPERS YET — they stay off the route until you tick them.` });
 
-    const weekAgo = Date.now() - 7 * 864e5;
-    const forgot = jobs.filter((j) =>
-      (j.status === "Served" || j.status === "Non-Serve Complete") && !j.invoice_id && !j.paid_upfront &&
-      j.client !== "ABC Legal" && j.done_at && new Date(j.done_at).getTime() < weekAgo);
-    if (forgot.length) alerts.push(`${forgot.length} finished job${forgot.length > 1 ? "s are" : " is"} over a week old and not on an invoice yet.`);
+    const short = billedJobs.filter((j) => j.paid_amount != null && Number(j.paid_amount) < Number(j.billed));
+    if (short.length) alerts.push({ go: 'data-go="money"',
+      t: `${short.length} job${short.length > 1 ? "s were" : " was"} short paid — ${money(short.reduce((s, j) => s + (Number(j.billed) - Number(j.paid_amount)), 0))} still owed to you.` });
+
+    const stale = sheets.filter((s) => s.status === "Closed" && !s.paid_on && s.closed_on && -days(s.closed_on) > 14);
+    stale.forEach((s) => alerts.push({ go: 'data-go="money"',
+      t: `${s.company} sheet for ${money(s.total)} has been unpaid ${Math.round(-days(s.closed_on))} days.` }));
+
+    const bigOpen = sheets.filter((s) => s.status === "Open").map((s) => ({
+      s, n: onOpenSheet.filter((j) => j.sheet_id === s.id).length
+    })).filter((x) => x.n >= 15);
+    bigOpen.forEach((x) => alerts.push({ go: `data-go="sheets" data-filter="${esc(x.s.company)}"`,
+      t: `The ${x.s.company} sheet is up to ${x.n} jobs — close it and get it submitted.` }));
 
     $("#alerts").innerHTML = alerts.length
-      ? `<div class="alerts">${alerts.map((a, i) => `<button class="alert tap" ${/invoice/.test(a) ? 'data-go="invoices"' : /papers/.test(a) ? 'data-go="jobs" data-filter="Papers"' : /address/.test(a) ? 'data-go="jobs" data-filter="Needs address"' : 'data-go="jobs" data-filter="Active"'}>${esc(a)}</button>`).join("")}</div>`
+      ? `<div class="alerts">${alerts.map((a) => `<button class="alert tap" ${a.go}>${esc(a.t)}</button>`).join("")}</div>`
       : "";
   }
 

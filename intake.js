@@ -1,4 +1,4 @@
-// J EMPIRE SERVER — intake.js (version 15: ignore the (0) line too)
+// J EMPIRE SERVER — intake.js (version 20: papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
@@ -7,13 +7,19 @@
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
   // =====================================================================
-  const CLIENTS = ["ABC Legal", "Ody's", "ProVest", "Userve", "Private"];
+  // ABC Legal is parked — its parser is still below, ready to switch back on
+  const CLIENTS = ["ProVest", "Userve", "Ody's", "Accurate Serve", "Proof", "Lynx Legal", "Legal Serve USA", "Private"];
 
   const RULES = {
     "ABC Legal": "Keeps: order #, name, price, address, serve-by date, attempt instructions, vehicles. Ignores: Details, Photos, History, Deliver To, and the other menu words.",
     "Ody's": "Keeps: Standard or Rush, name, ODY job #, Action date and C/O (to notes), and the address when included. Once you add an address for a name, it fills in automatically next time.",
     "ProVest": "Keeps: every address as its own job, including C/O (registered agent) and Re: (property) addresses. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
     "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map.",
+    "Accurate Serve": "Keeps: the job #, name, Due date, address, and Routine or Rush. Ignores: the Assn date and the Attempts line.",
+    "Legal Serve USA": "Same system as Accurate Serve, so it reads the same paste: job #, name, Due date, address, Routine or Rush. Set their rate in Money → Rates when you know it.",
+    "Proof": "Keeps: whatever it can find — name, address, job #, and the price when the paste includes a dollar amount. Check the price on every job before you save.",
+    "Lynx Legal": "Same shape as Ody's: Standard or Rush, name, job #, and the address when it's included. Set their rate in Money → Rates when you know it.",
+    "Legal Serve USA": "No set format yet — it reads any address it finds and takes the line above it as the name. Fix whatever it gets wrong before saving.",
     "Private": "Makes a blank job for you to fill in. If you paste an address, it's filled in for you."
   };
 
@@ -54,7 +60,10 @@
       if (up === "INC") return w.replace(bare, "Inc");
       if (KEEP_UPPER.has(up)) return w;
       return w.toLowerCase().replace(/(^|[^A-Za-z0-9])([a-z])/g, (m, p, c) => p + c.toUpperCase());
-    }).join("");
+    }).join("")
+      // Surname fixes, whatever case the paste arrived in
+      .replace(/\bMc([a-z])/g, (m, c) => "Mc" + c.toUpperCase())    // McNally, McCray
+      .replace(/\bO'([a-z])/g, (m, c) => "O'" + c.toUpperCase());   // O'Brien
   }
 
   function cleanAddress(s) {
@@ -84,8 +93,8 @@
   function blankDraft(client) {
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
-      has_papers: !PAPER_CLIENTS.includes(client),
-      is_foreclosure: false, packets: 1, is_business: false, on_hold: false };
+      has_papers: true,   // always starts checked — uncheck the ones you don't have yet
+      is_foreclosure: false, packets: 1, is_business: false, on_hold: false, job_type: "", attempt_count: 0 };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
   const nameKey = (n) => (n || "").toLowerCase().replace(/(\.\.\.|…)\s*$/, "").replace(/[^a-z0-9& ]/g, " ").replace(/\s+/g, " ").trim();
@@ -154,25 +163,33 @@
   // ---------- Ody's ----------
   // Handles the list view (name above "ODY - #", "Action date" below it) and
   // the detail view (job # on top, then name, C/O and address).
-  function parseOdys(text, extra) {
+  function parseOdys(text, extra, client) {
+    client = client || "Ody's";
     const ls = removeIgnored(lines(text), extra);
-    const isMarker = (l) => /^ODY\s*[—–\-:]*\s*\d{6,}/i.test(l);
+    // Ody's marks a job with "ODY — 2026013757". Lynx Legal uses the same
+    // layout, so any short letter prefix (or a bare long number) counts too.
+    const isMarker = (l) => client === "Ody's"
+      ? /^ODY\s*[—–\-:]*\s*\d{6,}/i.test(l)
+      : /^[A-Z]{2,6}\s*[—–\-:]*\s*\d{5,}\s*$/i.test(l) || /^#?\d{6,}\s*$/.test(l);
     const isService = (l) => /^(standard|rush|rushed|stand|standa|standar|ru|rus)$/i.test(l);
     const isAction = (l) => /^action\b/i.test(l);
-    const isCO = (l) => /^(c\/o|attn|attention)\b/i.test(l);
+    // C/O can sit at the start of its own line OR in the middle of the servee line
+    const isCO = (l) => /(^|\s)(c\/o|attn|attention)\b/i.test(l);
     const isCity = (l) => /\b(FL|Florida)\b[\s,]*\d{5}/i.test(l);
-    const isNameish = (l) => !isService(l) && !isAction(l) && !isCO(l) && !isMarker(l) &&
+    // Column headings in the detail view — never a name
+    const isLabel = (l) => /^(party to be served|parties to be served|servee|servees|serve to|defendant|defendants|respondent|respondents|plaintiff|plaintiffs|petitioner|address|serve address|service address|name|case|court|county)s?\s*:?\s*$/i.test(l);
+    const isNameish = (l) => !isService(l) && !isAction(l) && !isCO(l) && !isMarker(l) && !isLabel(l) &&
       !/^ODY$/i.test(l) && !STREET_START.test(l) && !isCity(l) && /[A-Za-z]{2}/.test(l);
     const idx = [];
     ls.forEach((l, i) => { if (isMarker(l)) idx.push(i); });
-    if (!idx.length) { const d = blankDraft("Ody's"); d.raw_text = text.trim(); return [d]; }
+    if (!idx.length) { const d = blankDraft(client); d.raw_text = text.trim(); return [d]; }
 
     const headerFirst = ls.slice(0, idx[0]).every((l) => isService(l) || /^ODY$/i.test(l));
     const startOf = (at) => (at > 0 && isService(ls[at - 1]) ? at - 1 : at);
 
     return idx.map((at, n) => {
-      const d = blankDraft("Ody's");
-      d.job_no = ls[at].match(/(\d{6,})/)[1];
+      const d = blankDraft(client);
+      d.job_no = ls[at].match(/(\d{5,})/)[1];
       let bl;
       if (headerFirst) {
         bl = ls.slice(n === 0 ? 0 : startOf(at), n + 1 < idx.length ? startOf(idx[n + 1]) : ls.length);
@@ -193,7 +210,13 @@
 
       const notes = [];
       const co = body.find(isCO);
-      if (co) notes.push(titleCase(co.replace(/^(c\/o|attn|attention)\s*:?\s*/i, "C/O: ")));
+      if (co) {
+        // Keep only the part from C/O onward — the company name is already the job name
+        const tail = co.replace(/^.*?(c\/o|attn|attention)\s*:?\s*/i, "");
+        notes.push("C/O: " + titleCase(tail));
+      }
+      // A company or a registered agent gets the business-hours flag
+      if ((nameLine && BIZ.test(nameLine)) || (co && /registered agent|r\.?a\.?\b/i.test(co))) d.is_business = true;
       const act = body.find(isAction);
       if (act) notes.push("Action date: " + act.replace(/^action\s*:?\s*/i, ""));
       if (nameLine && /(\.\.\.|…)\s*$/.test(nameLine)) notes.push("Name was cut off in the paste — check the full name in Ody's app.");
@@ -287,6 +310,215 @@
     });
   }
 
+  // ---------- Accurate Serve ----------
+  // ORL262830 / NAME / Assn: date / Due: date / address / Routine / Attempts: 0
+  const BIZ = /\b(llc|l\.l\.c|inc|corp|corporation|company|co|pa|p\.a|llp|lp|ltd|enterprises|services|group|bank|trust|association|assn|hoa|university|hospital|authority|agent|registered)\b/i;
+  const ACC_JOBNO = /^[A-Z]{2,4}[-\s]?\d{5,}$/;
+
+  function parseAccurate(text, extra) {
+    const ls = removeIgnored(lines(text), extra);
+    const out = [];
+    let cur = null;
+    const push = () => { if (cur) out.push(cur); cur = null; };
+
+    ls.forEach((l) => {
+      if (ACC_JOBNO.test(l)) {
+        push();
+        cur = blankDraft("Accurate Serve");
+        cur.job_no = l.replace(/[-\s]/g, "");
+        cur.raw_text = l;
+        return;
+      }
+      if (!cur) return;
+      cur.raw_text += "\n" + l;
+
+      if (/^assn\s*:/i.test(l)) return;                    // assigned date — not needed
+      if (/^attempts?\s*:/i.test(l)) {                     // how many they've already logged
+        const am = l.match(/(\d+)/);
+        if (am) cur.attempt_count = Number(am[1]);
+        return;
+      }
+      if (/^due\s*:/i.test(l)) {
+        const dm = l.match(DATE);
+        if (dm) cur.due_date = toIsoDate(dm);
+        return;
+      }
+      // Same as Proof: the service word carries the deadline, so keep it as a flag
+      if (/^(routine|standard|regular)$/i.test(l)) { cur.service = "Standard"; cur.job_type = titleCase(l); return; }
+      if (/^(rush|priority|expedited?|same.?day|asap)$/i.test(l)) { cur.service = "Rush"; cur.job_type = titleCase(l); return; }
+      if (!cur.address && (hasZip(l) || STREET_START.test(l))) {
+        cur.address = cleanAddress(l);
+        cur.county = countyFor(cur.address);
+        return;
+      }
+      if (!cur.person) {
+        cur.person = titleCase(l);
+        if (BIZ.test(l)) cur.is_business = true;
+        return;
+      }
+      cur.notes = cur.notes ? cur.notes + " · " + l : l;
+    });
+    push();
+    return out;
+  }
+
+  // "due in 22hrs" / "due in 2d 4h" / "by 8AM Sunday" -> a real date on the job
+  const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  function dueFromText(s) {
+    const t = (s || "").toLowerCase();
+    const dm = t.match(/(\d+)\s*d(?:ay)?s?\b/);
+    const hm = t.match(/(\d+)\s*h(?:r|rs|our|ours)?\b/);
+    if (dm || hm) {
+      const ms = Date.now() + (dm ? Number(dm[1]) * 864e5 : 0) + (hm ? Number(hm[1]) * 36e5 : 0);
+      return new Date(ms).toISOString().slice(0, 10);
+    }
+    const wd = WEEKDAYS.findIndex((w) => t.indexOf(w) >= 0);
+    if (wd >= 0) {
+      const now = new Date(); now.setHours(12, 0, 0, 0);
+      const add = ((wd - now.getDay()) + 7) % 7 || 7;
+      now.setDate(now.getDate() + add);
+      return now.toISOString().slice(0, 10);
+    }
+    if (/tomorrow/.test(t)) return new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+    if (/today|tonight/.test(t)) return new Date().toISOString().slice(0, 10);
+    return "";
+  }
+
+  // ---------- Proof ----------
+  // Each job starts with an "Attempt due in…" / "Attempt by…" line. The price
+  // floats around the block ($16.50 on its own, or "max pay $74.25"), and the
+  // job # is sometimes buried in "Primary • 1/4 attempts • #2138760".
+  function parseProof(text, extra) {
+    const ls = removeIgnored(lines(text), extra);
+    const isHeader = (l) => /^[•*\-\s]*attempt\s+(due\s+in|by)\b/i.test(l);
+    const isNoise = (l) =>
+      /^(assigned|unassigned|accepted|serve|in progress|primary|open|new|view|details)$/i.test(l) ||
+      /^\d+\s+unread\s+chat/i.test(l) ||
+      /^due\s+in\b/i.test(l) ||
+      /^(hide|show)\s+\d+\s+jobs?\s+at\s+this\s+address/i.test(l) ||
+      /^\d+(\.\d+)?\s*mi\s+away/i.test(l) ||
+      /^[•*\-\s]*$/.test(l);
+
+    const blocks = [];
+    let cur = null;
+    ls.forEach((l) => {
+      if (isHeader(l)) { if (cur) blocks.push(cur); cur = [l]; return; }
+      if (cur) cur.push(l); else cur = [l];
+    });
+    if (cur) blocks.push(cur);
+
+    return blocks.map((bl) => {
+      const d = blankDraft("Proof");
+      d.raw_text = bl.join("\n");
+      const nameParts = [];
+      let nameDone = false;
+      let post = "", stacked = 0;
+
+      bl.forEach((l, i) => {
+        if (i === 0 && isHeader(l)) {
+          const by = l.replace(/^[•*\-\s]*/, "");
+          d.notes = d.notes ? d.notes + "\n" + by : by;
+          const due = dueFromText(by);
+          if (due && !d.due_date) d.due_date = due;
+          return;
+        }
+        // These have to be checked BEFORE the address, because "2 Day Post"
+        // looks exactly like a house number followed by a street name.
+        if (/^\d+\s*day\s*post/i.test(l)) { post = l; d.job_type = titleCase(l); nameDone = true; return; }
+        if (/^(expedited|rush|priority|same.?day|asap)$/i.test(l)) { d.service = "Rush"; d.job_type = titleCase(l); nameDone = true; return; }
+        if (/^(routine|standard|regular)$/i.test(l)) { d.service = "Standard"; d.job_type = titleCase(l); nameDone = true; return; }
+        const sm = l.match(/^(?:hide|show)\s+(\d+)\s+jobs?\s+at\s+this\s+address/i);
+        if (sm) { stacked = Number(sm[1]); nameDone = true; return; }
+        if (isNoise(l)) { nameDone = true; return; }
+
+        // price — "$16.50" alone, or "max pay $74.25"
+        const pm = l.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+        if (pm) {
+          if (d.price == null) d.price = Number(pm[1].replace(/,/g, ""));
+          if (/max\s*pay/i.test(l)) d.notes = (d.notes ? d.notes + "\n" : "") + "Proof shows this as MAX pay — check what actually lands.";
+          nameDone = true;
+          return;
+        }
+        // job number — "#2139564" (the # is stripped off by then), or buried
+        // in "Primary • 1/4 attempts • #2138760"
+        const am = l.match(/(\d+)\s*\/\s*(\d+)\s*attempts?/i);
+        if (am) d.attempt_count = Number(am[1]);
+        const jm = l.match(/#\s*([0-9][0-9\/]{3,})/) || l.match(/^([0-9][0-9\/]{4,})$/);
+        if (jm) { if (!d.job_no) d.job_no = jm[1].replace(/\/$/, ""); nameDone = true; return; }
+        if (am) { nameDone = true; return; }
+
+        // county comes free on the "10.1 mi away • Osceola County" line
+        const cm = l.match(/mi\s+away\s*[•·|]\s*([A-Za-z]+)\s+County/i);
+        if (cm) { d.county = titleCase(cm[1]); nameDone = true; return; }
+        // address
+        if (!d.address && (hasZip(l) || STREET_START.test(l))) {
+          d.address = cleanAddress(l);
+          if (!d.county) d.county = countyFor(d.address);
+          nameDone = true;
+          return;
+        }
+        if (!nameDone) nameParts.push(l);
+      });
+
+      if (nameParts.length) {
+        d.person = titleCase(nameParts.join(" ").replace(/\s+/g, " ").trim());
+        if (BIZ.test(d.person)) d.is_business = true;
+      }
+      const extras = [];
+      if (post) extras.push(titleCase(post) + " — posting, not a personal serve");
+      if (stacked > 1) extras.push(`${stacked} jobs at this address — check for a second one in Proof.`);
+      if (extras.length) d.notes = (d.notes ? d.notes + "\n" : "") + extras.join("\n");
+      if (d.county) d.county = titleCase(d.county);
+      return d;
+    }).filter((d) => d.person || d.address || d.job_no);
+  }
+
+  // ---------- Anything else (Lynx Legal fallback, anything new) ----------
+  // No fixed layout: every address line starts a job, and the lines above it
+  // are read for a name, a job #, a due date and a dollar amount.
+  function parseGeneric(client, text, extra) {
+    const ls = removeIgnored(lines(text), extra);
+    const out = [];
+    let held = [];
+
+    const flush = (addrLine) => {
+      const d = blankDraft(client);
+      if (addrLine) { d.address = cleanAddress(addrLine); d.county = countyFor(d.address); }
+      held.forEach((p) => {
+        const pm = p.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+        if (pm && d.price == null) { d.price = Number(pm[1].replace(/,/g, "")); return; }
+        const dm = p.match(DATE);
+        if (dm) { if (/due|serve by|deadline/i.test(p) && !d.due_date) d.due_date = toIsoDate(dm); return; }
+        if (/^(rush|priority|expedite|same.?day|asap)/i.test(p)) { d.service = "Rush"; return; }
+        // "Job 8842991", "File #22-1180", "Case: ABC-9912" — or a bare code with digits
+        const jm = p.match(/^(?:job|file|case|ref(?:erence)?|order|service|svc)\s*(?:#|no\.?|number)?\s*[:\-]?\s*([A-Za-z0-9._\/-]{3,24})$/i);
+        if (!d.job_no && jm) { d.job_no = jm[1]; return; }
+        if (!d.job_no && /\d/.test(p) && /^#?[A-Za-z0-9._\/-]{4,24}$/.test(p)) { d.job_no = p.replace(/^#/, ""); return; }
+        if (!d.person && /[A-Za-z]{2}/.test(p)) {
+          d.person = titleCase(p);
+          if (BIZ.test(p)) d.is_business = true;
+          return;
+        }
+        d.notes = d.notes ? d.notes + " · " + p : p;
+      });
+      d.raw_text = held.concat(addrLine ? [addrLine] : []).join("\n");
+      held = [];
+      out.push(d);
+    };
+
+    ls.forEach((l) => {
+      if (hasZip(l) || STREET_START.test(l)) flush(l);
+      else held.push(l);
+    });
+    if (held.length) {
+      if (out.length) {
+        const last = out[out.length - 1];
+        last.notes = (last.notes ? last.notes + " · " : "") + held.join(" · ");
+      } else flush("");
+    }
+    return out;
+  }
+
   // ---------- Private ----------
   function parsePrivate(text) {
     const d = blankDraft("Private");
@@ -298,10 +530,15 @@
 
   function parse(client, text, extra) {
     if (client === "ABC Legal") return parseABC(text, extra);
-    if (client === "Ody's") return parseOdys(text, extra);
+    // Lynx Legal comes out in the same shape as Ody's
+    if (client === "Ody's" || client === "Lynx Legal") return parseOdys(text, extra, client);
     if (client === "ProVest") return parseProVest(text, extra);
     if (client === "Userve") return parseUserve(text, extra);
-    return parsePrivate(text);
+    // Accurate Serve and Legal Serve USA run on the same system, so the paste is identical
+    if (client === "Accurate Serve" || client === "Legal Serve USA") return parseAccurate(text, extra);
+    if (client === "Proof") return parseProof(text, extra);
+    if (client === "Private") return parsePrivate(text);
+    return parseGeneric(client, text, extra);
   }
 
   // Missing address / ZIP / county: the job still SAVES, but can't go on a route until fixed.
@@ -347,16 +584,25 @@
 
   async function loadData() {
     const db = J().db;
-    const [jobs, prices, ign, known] = await Promise.all([
+    const [jobs, rates, ign, known] = await Promise.all([
       db.from("jes_jobs").select("id,client,job_no,address,status"),
-      db.from("jes_settings").select("value").eq("key", "default_prices").maybeSingle(),
+      db.from("jes_rates").select("company,standard,rush,mode"),
       db.from("jes_settings").select("value").eq("key", "ignore_words").maybeSingle(),
       db.from("jes_settings").select("value").eq("key", "known_addresses").maybeSingle()
     ]);
     S.known = (known.data && known.data.value) || {};
     S.existing = jobs.data || [];
-    S.prices = (prices.data && prices.data.value) || {};
+    S.rates = {};
+    (rates.data || []).forEach((r) => { S.rates[r.company] = r; });
     S.ignore = (ign.data && ign.data.value) || {};
+  }
+
+  // The price for this client at this service level. null = no rate set yet.
+  function rateFor(client, service) {
+    const r = S.rates[client];
+    if (!r) return null;
+    const v = service === "Rush" ? r.rush : r.standard;
+    return v == null ? null : Number(v);
   }
 
   async function draw() {
@@ -371,6 +617,8 @@
             <select id="inClient" class="big-select">${CLIENTS.map((c) => `<option ${c === S.client ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
             <button class="btn" id="inBuild">Build Jobs</button>
           </div>
+          <button class="btn ghost wide" id="inOne">+ Add one job by hand</button>
+          <p class="muted small">For jobs that come in by email, by text, or over the phone — nothing to paste.</p>
           <label class="sr" for="inText">Paste jobs</label>
           <textarea id="inText" class="paste" placeholder="Paste all of this client's jobs here, exactly as copied."></textarea>
           <p class="rule" id="inRule"></p>
@@ -383,7 +631,6 @@
         </div>
         <div class="intake-right">
           <div class="summary" id="inSummary"></div>
-          <div id="inPapers"></div>
           <div class="drafts" id="inDrafts"></div>
           <div class="save-area" id="inSaveArea"></div>
         </div>
@@ -399,6 +646,7 @@
     };
     sel.onchange = () => { syncClient(); saveLocal(); };
     document.getElementById("inBuild").onclick = build;
+    document.getElementById("inOne").onclick = addOne;
     document.getElementById("igSave").onclick = saveIgnore;
 
     await loadData();
@@ -406,12 +654,25 @@
     drawDrafts();
   }
 
+  // One job, typed in — for anything that didn't arrive as text you can paste.
+  function addOne() {
+    const d = blankDraft(S.client);
+    d.source = "One job";
+    d.price = rateFor(S.client, "Standard");
+    if (d.price == null) d.price = 0;
+    S.drafts.push(d);
+    saveLocal();
+    drawDrafts();
+    openSheet(S.drafts.length - 1);
+  }
+
   function build() {
     const text = document.getElementById("inText").value;
     if (!text.trim() && S.client !== "Private") { J().toast("Paste jobs first"); return; }
     const found = parse(S.client, text, S.ignore[S.client]);
     found.forEach((d) => {
-      if (d.price == null) d.price = Number(S.prices[d.client] || 0);
+      if (d.price == null) d.price = rateFor(d.client, d.service);
+      if (d.price == null) d.price = 0;
       const k = nameKey(d.person);
       if (!d.address && k && S.known[k]) {
         d.address = S.known[k].address;
@@ -473,7 +734,7 @@
         </div>
         <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
         <div class="flag-row">
-          ${PAPER_CLIENTS.includes(d.client) ? `<button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "Waiting on Jean"}</button>` : ""}
+          <button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "NO PAPERS YET"}</button>
           <button class="flag rush ${d.service === "Rush" ? "on" : ""}" data-flag="service" data-i="${i}">⚡ Rush</button>
           <button class="flag fore ${d.is_foreclosure ? "on" : ""}" data-flag="is_foreclosure" data-i="${i}">📚 Foreclosure</button>
           ${d.is_foreclosure ? `<label class="pk">packets <input inputmode="numeric" data-pk="${i}" value="${d.packets || 1}" aria-label="How many packets"></label>` : ""}
@@ -554,7 +815,7 @@
           </div>
         </div>
         <div class="toggle-list">
-          <label class="tgl" ${PAPER_CLIENTS.includes(d.client) ? "" : "hidden"} id="f_papers_line">
+          <label class="tgl" id="f_papers_line">
             <input type="checkbox" id="f_has_papers" ${d.has_papers ? "checked" : ""}><span>📄 I have the papers for this job</span></label>
           <label class="tgl"><input type="checkbox" id="f_is_business" ${d.is_business ? "checked" : ""}><span>🏢 Business — serve 10–12 or 2–4 only</span></label>
           <label class="tgl"><input type="checkbox" id="f_is_foreclosure" ${d.is_foreclosure ? "checked" : ""}><span>📚 Foreclosure — pays per packet</span></label>
@@ -576,7 +837,6 @@
       const isPriv = $f("client").value === "Private";
       const po = back.querySelector(".private-only"); if (po) po.hidden = !isPriv;
       const pl = document.getElementById("f_paid_line"); if (pl) pl.hidden = !isPriv;
-      document.getElementById("f_papers_line").hidden = !PAPER_CLIENTS.includes($f("client").value);
     };
     $f("address").onblur = () => {
       const cleaned = window.JES_PARSE.cleanAddress($f("address").value);
@@ -590,7 +850,7 @@
       if (!d.county) d.county = countyFor(d.address);
       d.price = Number(String($f("price").value).replace(/[^0-9.]/g, "")) || 0;
       d.paid_upfront = !!($f("paid_upfront") && $f("paid_upfront").checked);
-      d.has_papers = PAPER_CLIENTS.includes(d.client) ? !!($f("has_papers") && $f("has_papers").checked) : true;
+      d.has_papers = !($f("has_papers") && !$f("has_papers").checked);
       d.is_foreclosure = !!($f("is_foreclosure") && $f("is_foreclosure").checked);
       d.packets = Math.max(1, parseInt($f("packets") ? $f("packets").value : 1, 10) || 1);
       d.is_business = !!($f("is_business") && $f("is_business").checked);
@@ -668,7 +928,10 @@
       is_foreclosure: !!d.is_foreclosure, packets: d.packets || 1, is_business: !!d.is_business,
       on_today: S.addToday && !problems(d).length && d.has_papers !== false && !d.on_hold,
       private_phone: d.private_phone || null, private_email: d.private_email || null,
-      paid_upfront: !!d.paid_upfront
+      paid_upfront: !!d.paid_upfront,
+      source: d.source || "Paste",
+      job_type: d.job_type || null,
+      attempt_count: Number(d.attempt_count) || 0
     }));
     const { error } = await J().db.from("jes_jobs").insert(rows);
     if (error) {
