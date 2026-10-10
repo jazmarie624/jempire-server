@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 23: ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 24: wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 23 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 24 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -98,6 +98,7 @@
       is_foreclosure: false, packets: 1, is_business: false, on_hold: false, job_type: "", attempt_count: 0 };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
+  const addrKey = (a) => String(a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const nameKey = (n) => (n || "").toLowerCase().replace(/(\.\.\.|…)\s*$/, "").replace(/[^a-z0-9& ]/g, " ").replace(/\s+/g, " ").trim();
 
   function removeIgnored(ls, extra) {
@@ -263,6 +264,9 @@
   }
   const addressCount = (a) => (String(a || "").match(/\b(?:FL|Florida)\b[\s,]*\d{5}/gi) || []).length;
 
+  // Words that mean "still the same address", not the start of a new one
+  const ADDR_CONT = /^(apt|apartment|unit|ste|suite|bldg|building|lot|rm|room|fl|floor|#)\b/i;
+
   function parseProVest(text, extra) {
     const ls = removeIgnored(lines(text), extra).filter((l) => !PROVEST_JUNK.test(l) && !/^\(?[o0]\)?[.,]?$/i.test(l));
     const isCO = (l) => /^(c\/o|c\.o\.|attn|attention)\b/i.test(l);
@@ -286,9 +290,12 @@
         start(sp.addr, "Property address (Re:)", sp.person);
         return;
       }
-      // A new job starts on any line carrying a whole address, once the one
-      // we're building already has its ZIP — even if a name comes first.
-      if ((!cur || hasZip(cur.addr)) && (STREET_START.test(l) || hasZip(l))) {
+      // A new job starts once the one we're building already has its ZIP and
+      // this line carries a street address — even with a name in front of it,
+      // and even when the ZIP wrapped onto the next line.
+      const addrAt = l.match(/^(.*?)(\d{1,6}[A-Za-z]?\s+[A-Za-z].*)$/);
+      const leadIsName = addrAt && addrAt[1].trim().length > 2 && !ADDR_CONT.test(addrAt[1].trim());
+      if ((!cur || hasZip(cur.addr)) && (STREET_START.test(l) || hasZip(l) || leadIsName)) {
         const sp = splitNameAddr(l);
         start(sp.addr, "", sp.person);
         return;
@@ -768,9 +775,20 @@
     const { esc } = J();
     const box = document.getElementById("inDrafts");
     drawPapersSwitch();
+    // Same address twice inside this one paste — flag the second one
+    const firstAt = new Map();
+    S.drafts.forEach((d, i) => {
+      const k = addrKey(d.address);
+      if (k && !firstAt.has(k)) firstAt.set(k, i);
+    });
+    const twinOf = (d, i) => {
+      const k = addrKey(d.address);
+      return k && firstAt.has(k) && firstAt.get(k) !== i ? firstAt.get(k) : -1;
+    };
     const withP = S.drafts.map((d, i) => {
-      const dup = duplicateOf(d, S.existing);
-      return { d, i, dup, p: dup ? [dup] : problems(d) };
+      const twin = twinOf(d, i);
+      const dup = twin >= 0 ? "Same address as job " + (twin + 1) + " in this paste" : duplicateOf(d, S.existing);
+      return { d, i, dup, twin, p: dup ? [dup] : problems(d) };
     });
     withP.sort((a, b) => (b.p.length > 0) - (a.p.length > 0));
     const dups = withP.filter((x) => x.dup).length;
@@ -878,7 +896,15 @@
     const dd = document.getElementById("inDropDups");
     if (dd) dd.onclick = () => {
       const before = S.drafts.length;
-      S.drafts = S.drafts.filter((d) => !duplicateOf(d, S.existing));
+      const keep = [], seen = new Set();
+      S.drafts.forEach((d) => {
+        if (duplicateOf(d, S.existing)) return;          // already saved before
+        const k = addrKey(d.address);
+        if (k && seen.has(k)) return;                     // repeated in this paste
+        if (k) seen.add(k);
+        keep.push(d);
+      });
+      S.drafts = keep;
       saveLocal(); drawDrafts();
       J().toast((before - S.drafts.length) + " duplicate" + (before - S.drafts.length === 1 ? "" : "s") + " cleared");
     };
@@ -1021,7 +1047,14 @@
   async function saveJobs(keepAsDraft) {
     const btn = document.getElementById("inSave");
     btn.disabled = true; btn.textContent = "Saving…";
-    const toSave = S.drafts.filter((d) => !duplicateOf(d, S.existing) && !keepAsDraft.has(d));
+    const seenAddr = new Set();
+    const toSave = S.drafts.filter((d) => {
+      if (duplicateOf(d, S.existing) || keepAsDraft.has(d)) return false;
+      const k = addrKey(d.address);
+      if (k && seenAddr.has(k)) return false;   // the same address twice in one paste
+      if (k) seenAddr.add(k);
+      return true;
+    });
     if (!toSave.length) { drawDrafts(); J().toast("Nothing saved — kept as drafts"); return; }
     const rows = toSave.map((d) => ({
       client: d.client, job_no: d.job_no || null, person: d.person || null, address: d.address || null,
