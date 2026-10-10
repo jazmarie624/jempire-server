@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 23: paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 24: warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 23 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 24 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
@@ -158,6 +158,14 @@
           </div>
         </div>
 
+        ${(() => {
+          const nn = ls.filter((j) => !j.person).length, nj = ls.filter((j) => !j.job_no).length;
+          if (!nn && !nj) return "";
+          const bits = [];
+          if (nj) bits.push(`${nj} need a job number`);
+          if (nn) bits.push(`${nn} need a name`);
+          return `<div class="alert">${bits.join(" · ")} before this sheet is submitted. Tap a line to fill it in — they can wait until you're off the road.</div>`;
+        })()}
         ${unticked ? `<div class="alert soft">${unticked} job${unticked > 1 ? "s aren't" : " isn't"} ticked as entered in ${esc(sheet.company)}'s app. They get billed either way — the ✓ is just your own reminder.</div>` : ""}
 
         <div class="sheet-lines">
@@ -167,8 +175,8 @@
           ${ls.length ? ls.map((j, i) => `
             <div class="sl-row ${!Number(j.price) ? "zero" : ""}">
               <span class="muted">${i + 1}</span>
-              <span class="sl-date">${esc(fmtDay(j.done_at))}${j.job_no ? " · " + esc(j.job_no) : ""}</span>
-              <span class="sl-name" data-job="${j.id}">${esc(j.person || "(no name)")}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}${j.ns_reason ? ` <span class="muted small">${esc(j.ns_reason)}</span>` : ""}</span>
+              <span class="sl-date">${esc(fmtDay(j.done_at))}${j.job_no ? " · " + esc(j.job_no) : ` · <span class="need">job #</span>`}</span>
+              <span class="sl-name" data-job="${j.id}">${j.person ? esc(j.person) : `<span class="need">tap to add name</span>`}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}${j.ns_reason ? ` <span class="muted small">${esc(j.ns_reason)}</span>` : ""}</span>
               <span class="sl-sn ${j.outcome === "Served" ? "ok" : ""}">${j.outcome === "Served" ? "S" : "NS"}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.price != null && Number(j.price) ? Number(j.price).toFixed(2) : ""}" data-price="${j.id}" aria-label="Amount for ${esc(j.person || "job")}"></span>
               <span class="center"><button class="tick ${j.chk_client_app ? "on" : ""}" data-tick="${j.id}" aria-label="Entered in their app">${j.chk_client_app ? "✓" : "·"}</button></span>
@@ -239,6 +247,17 @@
     const total = ls.reduce((s, j) => s + Number(j.price || 0), 0);
     const zero = ls.filter((j) => !Number(j.price)).length;
     if (zero && !confirm(`${zero} job${zero > 1 ? "s have" : " has"} no price on ${zero > 1 ? "them" : "it"}. Close anyway?`)) return;
+
+    // Blank names and job numbers print as blank cells on the invoice
+    const noName = ls.filter((j) => !j.person || !String(j.person).trim()).length;
+    const noNo = ls.filter((j) => !j.job_no || !String(j.job_no).trim()).length;
+    if (noName || noNo) {
+      const bits = [];
+      if (noNo) bits.push(`${noNo} with no job number`);
+      if (noName) bits.push(`${noName} with no name`);
+      const who = forJean(sheet.company) ? "Jean" : sheet.company;
+      if (!confirm(`${bits.join(" and ")}.\n\nThose print as blank boxes and ${who} can't match them to pay you.\n\nClose anyway?`)) return;
+    }
     if (!confirm(`Close the ${sheet.company} sheet?\n\n${ls.length} jobs · ${J().money(total)}\n\nThe amounts get frozen and a line opens in the payment tracker.`)) return;
 
     const period_start = String(ls[0].done_at || todayISO()).slice(0, 10);
@@ -451,7 +470,7 @@
             const isPaid = j.paid_amount != null && Number(j.paid_amount) >= Number(j.billed);
             return `<div class="sl-row pay ${isShort ? "short" : ""}">
               <span class="muted">${i + 1}</span>
-              <span class="sl-date">${esc(fmtDay(j.done_at))}${j.job_no ? " · " + esc(j.job_no) : ""}</span>
+              <span class="sl-date">${esc(fmtDay(j.done_at))}${j.job_no ? " · " + esc(j.job_no) : ` · <span class="need">job #</span>`}</span>
               <span class="sl-name" data-job="${j.id}">${esc(j.person || "(no name)")}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}</span>
               <span class="right strong">${money(j.billed || 0)}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.paid_amount != null ? Number(j.paid_amount).toFixed(2) : ""}" data-paid="${j.id}" aria-label="Paid for ${esc(j.person || "job")}"></span>
