@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 45: editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 46: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1197,3 +1197,11 @@ ol.tight li { margin-bottom: 0.15rem; }
 .sl-name .cell-in.wide { font-weight: 700; font-size: 0.95rem; }
 .sl-tags { display: inline-flex; gap: 0.25rem; align-items: center; padding-left: 0.3rem; }
 .sl-date .cell-in { font-size: 0.78rem; font-weight: 600; }
+
+/* ---------- the address under the name, so a blank line is still findable ---------- */
+.sheet-lines .sl-name { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+.sl-addr {
+  font-size: 0.74rem; font-weight: 500; color: var(--navy-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 0.35rem;
+}
+.sheet-lines .sl-row { align-items: center; }

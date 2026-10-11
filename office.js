@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 25: names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 26: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 25 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 26 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
@@ -176,7 +176,10 @@
             <div class="sl-row ${!Number(j.price) ? "zero" : ""}">
               <span class="muted">${i + 1}</span>
               <span class="sl-date">${esc(fmtDay(j.done_at))}<input class="cell-in ${j.job_no ? "" : "empty"}" value="${esc(j.job_no || "")}" placeholder="job #" data-jobno="${j.id}" aria-label="Job number"></span>
-              <span class="sl-name"><input class="cell-in wide ${j.person ? "" : "empty"}" value="${esc(j.person || "")}" placeholder="tap to add name" data-person="${j.id}" aria-label="Name"><span class="sl-tags">${j.is_foreclosure ? `<span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}${j.ns_reason ? ` <span class="muted small">${esc(j.ns_reason)}</span>` : ""}</span></span>
+              <span class="sl-name">
+                <input class="cell-in wide ${j.person ? "" : "empty"}" value="${esc(j.person || "")}" placeholder="tap to add name" data-person="${j.id}" aria-label="Name">
+                <span class="sl-addr">${esc(j.address || "no address")}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}${j.ns_reason ? ` · ${esc(j.ns_reason)}` : ""}</span>
+              </span>
               <span class="sl-sn ${j.outcome === "Served" ? "ok" : ""}">${j.outcome === "Served" ? "S" : "NS"}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.price != null && Number(j.price) ? Number(j.price).toFixed(2) : ""}" data-price="${j.id}" aria-label="Amount for ${esc(j.person || "job")}"></span>
               <span class="center"><button class="tick ${j.chk_client_app ? "on" : ""}" data-tick="${j.id}" aria-label="Entered in their app">${j.chk_client_app ? "✓" : "·"}</button></span>
@@ -483,7 +486,9 @@
             return `<div class="sl-row pay ${isShort ? "short" : ""}">
               <span class="muted">${i + 1}</span>
               <span class="sl-date">${esc(fmtDay(j.done_at))}<input class="cell-in ${j.job_no ? "" : "empty"}" value="${esc(j.job_no || "")}" placeholder="job #" data-jobno="${j.id}" aria-label="Job number"></span>
-              <span class="sl-name" data-job="${j.id}">${esc(j.person || "(no name)")}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}</span>
+              <span class="sl-name" data-job="${j.id}">${esc(j.person || "(no name)")}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}
+                <span class="sl-addr">${esc(j.address || "")}</span>
+              </span>
               <span class="right strong">${money(j.billed || 0)}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.paid_amount != null ? Number(j.paid_amount).toFixed(2) : ""}" data-paid="${j.id}" aria-label="Paid for ${esc(j.person || "job")}"></span>
               <span class="center">${isShort ? `<span class="short-tag">SHORT</span>`
