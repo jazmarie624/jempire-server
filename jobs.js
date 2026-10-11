@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 36: paper check — work the stack at the car, grouped by ZIP —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 37: paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 36 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 37 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -1284,9 +1284,10 @@
   }
 
   // ---------- paper check: stand at the car and work the stack ----------
-  // Grouped by ZIP because that's how Gene hands them over. Ticking a row means
-  // the paper is in your hand. Whatever's left unticked at the end is a job you
-  // have no paper for — and anything in your hand with no row never got added.
+  // Two ways to read the same stack. BY ZIP is for sorting at home, because
+  // that's how the papers get labelled. BY CLIENT is for standing in front of
+  // Jean — pick "Jean's two" and he sees ProVest and Userve and nothing else.
+  const PS = { view: "zip", only: "All" };
   function drawPaperCheck() {
     const { esc } = J();
     const back = byId("sheetBack") || document.body.appendChild(
@@ -1295,56 +1296,98 @@
     const zipOfJob = (j) => ((j.address || "").match(/\b(\d{5})(?:-\d{4})?\b/) || [])[1] || "No ZIP";
 
     const paint = () => {
-      const live = JS.jobs.filter((j) => j.status === "Active" && !isDone(j))
-        .sort((a, b) => zipOfJob(a).localeCompare(zipOfJob(b))
-          || (a.client || "").localeCompare(b.client || ""));
+      const all = JS.jobs.filter((j) => j.status === "Active" && !isDone(j));
+      const clients = Array.from(new Set(all.map((j) => j.client || "No client"))).sort();
+      const keep = (j) => PS.only === "All"
+        || (PS.only === "JEAN" ? PAPER_CLIENTS.includes(j.client) : (j.client || "No client") === PS.only);
+      const live = all.filter(keep).sort((a, b) => PS.view === "zip"
+        ? (zipOfJob(a).localeCompare(zipOfJob(b)) || (a.client || "").localeCompare(b.client || ""))
+        : ((a.client || "").localeCompare(b.client || "") || zipOfJob(a).localeCompare(zipOfJob(b))));
       const got = live.filter((j) => j.has_papers !== false).length;
-      let lastZip = "";
+      const bandOf = (j) => PS.view === "zip" ? zipOfJob(j) : (j.client || "No client");
+
+      let last = "";
       const rows = live.map((j) => {
-        const z = zipOfJob(j);
-        const head = z !== lastZip
-          ? `<div class="pc-zip">${esc(z)}<span>${live.filter((x) => zipOfJob(x) === z).length} job${live.filter((x) => zipOfJob(x) === z).length === 1 ? "" : "s"}</span></div>` : "";
-        lastZip = z;
+        const b = bandOf(j);
+        const n = live.filter((x) => bandOf(x) === b).length;
+        const head = b !== last
+          ? `<div class="pc-zip">${esc(b)}<span>${n} job${n === 1 ? "" : "s"}</span></div>` : "";
+        last = b;
         const have = j.has_papers !== false;
         const jean = PAPER_CLIENTS.includes(j.client);
+        const sub = PS.view === "zip"
+          ? `${esc(j.client || "")} · ${jean ? "Jean hands this over" : "you print this one"}`
+          : `ZIP ${esc(zipOfJob(j))} · ${jean ? "Jean hands this over" : "you print this one"}`;
         return head + `<div class="pc-row ${have ? "on" : ""}" data-pc="${j.id}" role="button" tabindex="0"
              aria-label="${have ? "In hand" : "Not in hand"}: ${esc(j.person || j.address || "job")}">
           <div class="pc-tick">${have ? "✓" : ""}</div>
           <div class="pc-text">
             <div class="pc-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
             <div class="pc-addr">${esc(j.address || "no address")}</div>
-            <div class="pc-sub">${esc(j.client || "")} · ${jean ? "Jean hands this over" : "you print this one"}</div>
+            <div class="pc-sub">${sub}</div>
           </div>
         </div>`;
       }).join("");
+
       const missing = live.length - got;
+      const chips = PS.view === "client"
+        ? `<div class="pc-chips">
+            <button class="pc-chip ${PS.only === "All" ? "on" : ""}" data-only="All">All clients</button>
+            <button class="pc-chip jean ${PS.only === "JEAN" ? "on" : ""}" data-only="JEAN">Jean's two only</button>
+            ${clients.map((c) => `<button class="pc-chip ${PS.only === c ? "on" : ""}" data-only="${esc(c)}">${esc(shortName(c))}</button>`).join("")}
+          </div>` : "";
+
       back.innerHTML = `<div class="sheet papercheck" role="dialog" aria-modal="true" aria-labelledby="pcT">
         <div class="lu-head">
           <h2 id="pcT">Paper check</h2>
           <span class="lu-count ${missing ? "" : "all"}">${got} of ${live.length} in hand</span>
         </div>
-        <p class="muted small">Work your stack. Tap a row when you find its papers.
-          ${missing ? `<b>${missing} still unticked — those are jobs you have no paper for.</b>` : `Every job has its papers ✓`}</p>
-        <div class="lu-list">${rows || `<p class="muted center">No active jobs.</p>`}</div>
+        <div class="seg pc-seg" id="pcView">
+          <button class="${PS.view === "zip" ? "on" : ""}" data-v="zip">By ZIP</button>
+          <button class="${PS.view === "client" ? "on" : ""}" data-v="client">By client</button>
+        </div>
+        ${chips}
+        <p class="muted small">${PS.only === "JEAN" ? `<b>Jean's two only — ProVest and Userve. Nothing else is on this screen.</b> ` : ""}Work your stack. Tap a row when you find its papers.
+          ${missing ? `<b>${missing} still unticked — those are jobs you have no paper for.</b>` : `Every job here has its papers ✓`}</p>
+        <div class="lu-list">${rows || `<p class="muted center">Nothing here.</p>`}</div>
         <div class="sheet-btns">
-          <button class="btn ghost" id="pcNone">Untick everything</button>
+          <button class="btn ghost" id="pcNone">Untick these</button>
           <button class="btn go" id="pcClose">Done</button>
         </div>
       </div>`;
+
       back.querySelectorAll("[data-pc]").forEach((row) => row.onclick = async () => {
         const j = JS.jobs.find((x) => x.id === row.dataset.pc);
         const have = j.has_papers !== false;
         const patch = { has_papers: !have };
         if (have) patch.on_today = false;           // no papers means off the route
-        if (await updateJob(j.id, patch)) { Object.assign(j, patch); paint(); }
+        if (!(await updateJob(j.id, patch))) return;
+        Object.assign(j, patch);
+        // Say out loud where it went, and move it behind the sheet right now
+        J().toast(have
+          ? "Papers back with " + (PAPER_CLIENTS.includes(j.client) ? "Jean" : "the printer")
+          : "Papers in hand ✓ — now in Ready to route");
+        J().refreshBadges && J().refreshBadges();
+        drawList();
+        paint();
       });
+      byId("pcView").onclick = (e) => {
+        const b = e.target.closest("[data-v]");
+        if (b) { PS.view = b.dataset.v; if (PS.view === "zip") PS.only = "All"; paint(); }
+      };
+      const chipBox = back.querySelector(".pc-chips");
+      if (chipBox) chipBox.onclick = (e) => {
+        const b = e.target.closest("[data-only]");
+        if (b) { PS.only = b.dataset.only; paint(); }
+      };
       byId("pcNone").onclick = async () => {
-        if (!confirm("Untick every job? You'd start the stack from scratch.")) return;
+        if (!confirm(`Untick all ${live.length} showing? You'd start this stack from scratch.`)) return;
         for (const j of live) if (j.has_papers !== false) {
           await updateJob(j.id, { has_papers: false, on_today: false });
           j.has_papers = false; j.on_today = false;
         }
-        paint();
+        J().refreshBadges && J().refreshBadges();
+        drawList(); paint();
       };
       byId("pcClose").onclick = () => {
         back.hidden = true; back.innerHTML = "";
