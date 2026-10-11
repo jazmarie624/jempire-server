@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 34: “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 35: stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 34 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 35 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -545,7 +545,7 @@
     county: localStorage.getItem("jes_route_county") || "Osceola",
     start: localStorage.getItem("jes_route_start") || "here",
     started: false, here: null, watchId: null, dismissed: new Set(),
-    map: null, stops: [], all: [], open: null,
+    map: null, stops: [], all: [], open: null, vague: 0,
     miles: Number(localStorage.getItem("jes_route_miles") || 0),
     lastPt: JSON.parse(localStorage.getItem("jes_route_lastpt") || "null")
   };
@@ -899,17 +899,41 @@
       maxZoom: 19, className: "soft-tiles",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
+    // Several stops landing on ONE point means the lookup gave up on the street
+    // and dropped them in the middle of the ZIP. They used to hide under each
+    // other and look like a single correct pin. Now they fan out and say so.
+    const tally = {};
+    RS.stops.forEach((j) => {
+      if (j.lat == null) return;
+      const k = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
+      tally[k] = (tally[k] || 0) + 1;
+    });
     const pts = [];
     const seen = {};
+    let vague = 0;
     RS.stops.forEach((j, i) => {
       if (j.lat == null) return;
       const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
+      const stacked = tally[key] > 1;
+      if (stacked) vague++;
       const n = (seen[key] = (seen[key] || 0) + 1);
-      if (n > 1) { const a = (n - 1) * 1.1; j = Object.assign({}, j, { lat: j.lat + 0.00035 * Math.cos(a), lng: j.lng + 0.00035 * Math.sin(a) }); }
-      const icon = L.divIcon({ className: "pin", html: `<span>${stopNo(j, i)}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] });
-      L.marker([j.lat, j.lng], { icon }).addTo(map).bindPopup(`<b>${stopNo(j, i)}. ${J().esc(j.person || "")}</b><br>${J().esc(j.address)}`);
-      pts.push([j.lat, j.lng]);
+      let lat = j.lat, lng = j.lng;
+      if (stacked) {
+        // spread them in a visible ring, about a third of a mile across
+        const a = (n - 1) * (2 * Math.PI / tally[key]);
+        lat += 0.0035 * Math.cos(a);
+        lng += 0.0040 * Math.sin(a);
+      }
+      const icon = L.divIcon({
+        className: "pin" + (stacked ? " vague" : ""),
+        html: `<span>${stopNo(j, i)}</span>`, iconSize: [34, 34], iconAnchor: [17, 17]
+      });
+      L.marker([lat, lng], { icon }).addTo(map)
+        .bindPopup(`<b>${stopNo(j, i)}. ${J().esc(j.person || "")}</b><br>${J().esc(j.address)}`
+          + (stacked ? `<br><b style="color:#9B3B2F">Rough spot only — this pin is the middle of the ZIP, not the door.</b>` : ""));
+      pts.push([lat, lng]);
     });
+    RS.vague = vague;
     if (pts.length > 1) L.polyline(pts, { color: "#1F2A44", weight: 3, dashArray: "6 6" }).addTo(map);
 
     // "You are here" — your own dot, so you can see the run from where you stand
@@ -928,9 +952,11 @@
     const tag = byId("rMapCount");
     if (tag) {
       const off = RS.stops.length - pts.length;
-      tag.innerHTML = off
-        ? `<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map yet</b> — the address lookup couldn't place ${off === 1 ? "it" : "them"}. Tap <b>Find missing pins</b> to try again.`
-        : `All ${RS.stops.length} stops are on the map.`;
+      const bits = [];
+      if (off) bits.push(`<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map</b> — tap <b>Find missing pins</b>.`);
+      if (RS.vague) bits.push(`<b class="bad">${RS.vague} pin${RS.vague === 1 ? " is" : "s are"} a rough guess</b> — the lookup couldn't find the street and used the middle of the ZIP instead. Those are the hollow pins. Don't trust them to navigate, and don't trust the drive order around them.`);
+      if (!bits.length) bits.push(`All ${RS.stops.length} stops are on the map, each at its own address.`);
+      tag.innerHTML = bits.join(" ");
     }
   }
 
