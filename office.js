@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 24: warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 25: names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 24 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 25 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
@@ -175,8 +175,8 @@
           ${ls.length ? ls.map((j, i) => `
             <div class="sl-row ${!Number(j.price) ? "zero" : ""}">
               <span class="muted">${i + 1}</span>
-              <span class="sl-date">${esc(fmtDay(j.done_at))}${j.job_no ? " · " + esc(j.job_no) : ` · <span class="need">job #</span>`}</span>
-              <span class="sl-name" data-job="${j.id}">${j.person ? esc(j.person) : `<span class="need">tap to add name</span>`}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}${j.ns_reason ? ` <span class="muted small">${esc(j.ns_reason)}</span>` : ""}</span>
+              <span class="sl-date">${esc(fmtDay(j.done_at))}<input class="cell-in ${j.job_no ? "" : "empty"}" value="${esc(j.job_no || "")}" placeholder="job #" data-jobno="${j.id}" aria-label="Job number"></span>
+              <span class="sl-name"><input class="cell-in wide ${j.person ? "" : "empty"}" value="${esc(j.person || "")}" placeholder="tap to add name" data-person="${j.id}" aria-label="Name"><span class="sl-tags">${j.is_foreclosure ? `<span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}${j.ns_reason ? ` <span class="muted small">${esc(j.ns_reason)}</span>` : ""}</span></span>
               <span class="sl-sn ${j.outcome === "Served" ? "ok" : ""}">${j.outcome === "Served" ? "S" : "NS"}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.price != null && Number(j.price) ? Number(j.price).toFixed(2) : ""}" data-price="${j.id}" aria-label="Amount for ${esc(j.person || "job")}"></span>
               <span class="center"><button class="tick ${j.chk_client_app ? "on" : ""}" data-tick="${j.id}" aria-label="Entered in their app">${j.chk_client_app ? "✓" : "·"}</button></span>
@@ -206,6 +206,18 @@
         <div id="printSheet" class="print-only"></div>
       </section>`;
 
+    document.querySelectorAll("[data-person],[data-jobno]").forEach((inp) => inp.onchange = async () => {
+      const isName = inp.hasAttribute("data-person");
+      const id = inp.getAttribute(isName ? "data-person" : "data-jobno");
+      const patch = {};
+      patch[isName ? "person" : "job_no"] = inp.value.trim() || null;
+      const { error } = await J().db.from("jes_jobs").update(patch).eq("id", id);
+      if (error) { J().toast("Not saved: " + error.message); return; }
+      inp.classList.toggle("empty", !inp.value.trim());
+      const row = O.jobs.find((x) => x.id === id);
+      if (row) Object.assign(row, patch);
+      J().toast("Saved");
+    });
     document.querySelectorAll("[data-price]").forEach((inp) => inp.onchange = async () => {
       const v = num(inp.value);
       await J().db.from("jes_jobs").update({ price: v == null ? 0 : v }).eq("id", inp.getAttribute("data-price"));
@@ -470,7 +482,7 @@
             const isPaid = j.paid_amount != null && Number(j.paid_amount) >= Number(j.billed);
             return `<div class="sl-row pay ${isShort ? "short" : ""}">
               <span class="muted">${i + 1}</span>
-              <span class="sl-date">${esc(fmtDay(j.done_at))}${j.job_no ? " · " + esc(j.job_no) : ` · <span class="need">job #</span>`}</span>
+              <span class="sl-date">${esc(fmtDay(j.done_at))}<input class="cell-in ${j.job_no ? "" : "empty"}" value="${esc(j.job_no || "")}" placeholder="job #" data-jobno="${j.id}" aria-label="Job number"></span>
               <span class="sl-name" data-job="${j.id}">${esc(j.person || "(no name)")}${j.is_foreclosure ? ` <span class="tag purple">📚 ×${j.packets || 1}</span>` : ""}</span>
               <span class="right strong">${money(j.billed || 0)}</span>
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.paid_amount != null ? Number(j.paid_amount).toFixed(2) : ""}" data-paid="${j.id}" aria-label="Paid for ${esc(j.person || "job")}"></span>

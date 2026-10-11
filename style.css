@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 44: ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 45: editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1177,3 +1177,23 @@ ol.tight li { margin-bottom: 0.15rem; }
 .zip-head span { font-size: 0.8rem; }
 .zip-head .bad { color: #FFB8A8; }
 .zip-head.none { background: var(--red); color: #fff; }
+
+/* ---------- send a stop to the front of the route ---------- */
+.icon-btn.top-btn {
+  width: auto; padding: 0 0.5rem; font-size: 0.74rem; font-weight: 700;
+  background: var(--navy); color: var(--gold-soft); border-color: var(--navy); white-space: nowrap;
+}
+.icon-btn.top-btn:disabled { opacity: 0.3; }
+
+/* ---------- typing names and job numbers on the sheet line ---------- */
+.cell-in {
+  width: 100%; min-height: 2rem; font-size: 0.88rem; font-weight: 600;
+  border: 1px solid transparent; border-radius: 7px; padding: 0 0.35rem;
+  background: transparent; color: var(--navy); font-family: var(--sans);
+}
+.cell-in:hover, .cell-in:focus { border-color: var(--line); background: #fff; }
+.cell-in.empty { border: 1px dashed var(--red); background: var(--red-bg); }
+.cell-in.empty::placeholder { color: var(--red); font-weight: 700; font-size: 0.78rem; }
+.sl-name .cell-in.wide { font-weight: 700; font-size: 0.95rem; }
+.sl-tags { display: inline-flex; gap: 0.25rem; align-items: center; padding-left: 0.3rem; }
+.sl-date .cell-in { font-size: 0.78rem; font-weight: 600; }

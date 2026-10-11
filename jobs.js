@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 28: papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 29: jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 28 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 29 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -815,6 +815,7 @@
             <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.lat == null ? ` · <b class="bad">📍 No map pin — check address</b>` : j.geoApprox ? ` · <b class="bad">Pin is approximate</b>` : ""}</div>
           </div>
           <div class="move">
+            <button class="icon-btn top-btn" data-top="${i}" aria-label="Make stop ${i + 1} the next one" ${i === 0 ? "disabled" : ""}>⇧ 1st</button>
             <button class="icon-btn" data-up="${i}" aria-label="Move stop ${i + 1} up" ${i === 0 ? "disabled" : ""}>▲</button>
             <button class="icon-btn" data-down="${i}" aria-label="Move stop ${i + 1} down" ${i === RS.stops.length - 1 ? "disabled" : ""}>▼</button>
           </div>
@@ -839,6 +840,15 @@
         </div>`}
       </div>`;
     }).join("");
+    box.querySelectorAll("[data-top]").forEach((b) => b.onclick = async () => {
+      const i = Number(b.dataset.top);
+      if (i <= 0) return;
+      const [j] = RS.stops.splice(i, 1);
+      RS.stops.unshift(j);
+      await saveOrder();
+      drawStops(); drawMap();
+      J().toast((j.person || "That stop") + " is next");
+    });
     box.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => move(Number(b.dataset.up), -1));
     box.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => move(Number(b.dataset.down), 1));
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openJob(RS.stops.find((j) => j.id === b.dataset.edit), drawRoute));
