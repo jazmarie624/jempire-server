@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 28: Userve reads mixed-case names (Amanda Her) —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 29: Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 28 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 29 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -15,7 +15,7 @@
     "ABC Legal": "Keeps: order #, name, price, address, serve-by date, attempt instructions, vehicles. Ignores: Details, Photos, History, Deliver To, and the other menu words.",
     "Ody's": "Keeps: Standard or Rush, name, ODY job #, Action date and C/O (to notes), and the address when included. Once you add an address for a name, it fills in automatically next time.",
     "ProVest": "Keeps: every address as its own job, including C/O (registered agent) and Re: (property) addresses. Ignores: Saved, All Work, Corporate, Search, Include Closed Cases. Add job # and names later.",
-    "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map.",
+    "Userve": "Keeps: name, job #, address, county. Ignores: open, MWA, MDEWA, the assigned date, Attempt / Serve, View on Map, Create Route, Reset Route, and your phone's battery bar.",
     "Accurate Serve": "Keeps: the job #, name, Due date, address, and Routine or Rush. Ignores: the Assn date and the Attempts line.",
     "Legal Serve USA": "Same system as Accurate Serve, so it reads the same paste: job #, name, Due date, address, Routine or Rush. Set their rate in Money → Rates when you know it.",
     "Proof": "Keeps: whatever it can find — name, address, job #, and the price when the paste includes a dollar amount. Check the price on every job before you save.",
@@ -70,7 +70,8 @@
   function cleanAddress(s) {
     let a = (s || "").replace(/\s+/g, " ").trim();
     a = a.replace(/,\s*,+/g, ",");                                 // ",,"  -> ","
-    a = a.replace(/,?\s*\b(OSCEOLA|ORANGE)\b\s*(COUNTY)?\s*,?\s*$/i, ""); // trailing county word
+    // trailing county word, with the stray chevron letter their app pastes after it ("OSCEOLA v")
+    a = a.replace(/,?\s*\b(OSCEOLA|ORANGE|POLK|LAKE|SEMINOLE|BREVARD|VOLUSIA|HILLSBOROUGH|SUMTER|MARION)\b\s*(COUNTY)?\s*[a-z]?\s*,?\s*$/i, "");
     a = a.replace(/,\s*FL\s*,?\s*(\d{5})(?:[\s-]+(\d{4}))?/i, (m, z, p4) => ", FL " + z + (p4 ? "-" + p4 : ""));
     a = a.replace(/\s+FL\s*,?\s*(\d{5})(?:[\s-]+(\d{4}))?/i, (m, z, p4) => ", FL " + z + (p4 ? "-" + p4 : ""));
     a = a.replace(/,?\s*\(?[o0]\)?\s*$/i, "");
@@ -317,11 +318,16 @@
   }
 
   // ---------- Userve ----------
-  const USERVE_JUNK = /^(open|closed|mwa|mdewa|attempt\s*\/\s*serve|view on map|attempt|serve|status|county|name|case|re|re:)$/i;
+  // Buttons and column headers from their web page — never a person
+  const USERVE_JUNK = /^(open|closed|pending|active|mwa|mdewa|attempt\s*\/\s*serve|view on map|attempt|serve|served|status|county|name|case|re|re:|create route|reset route|clear route|optimize route|start route|end route|map|list|menu|back|next|previous|home|log ?out|sign ?out|search|filter|sort|select all|my jobs|jobs|refresh|print)$/i;
   const USERVE_COUNTY = /^(osceola|orange|polk|lake|seminole|brevard|volusia|hillsborough|sumter|marion)( county)?$/i;
+  // "317661 • 09/23/2026"  — job number and assigned date share one line
+  const USERVE_NO_DATE = /^(\d{5,8})\s*[•·*\-]?\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/;
   function parseUserve(text, extra) {
     const ls = removeIgnored(lines(text), extra)
       .filter((l) => !USERVE_JUNK.test(l))
+      .filter((l) => /[A-Za-z]/.test(l) || USERVE_NO_DATE.test(l) || /^\d{5,8}$/.test(l)) // battery bar, "三", dividers
+      .filter((l) => !/%/.test(l))                                   // "1 • 9 72% O" status bar
       .filter((l) => !/^[•·*\-\s]*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/.test(l)); // assigned / bullet date
     const jobs = [];
     let cur = null;
@@ -347,7 +353,9 @@
       }
       if (!cur) return;
       cur.lines.push(l);
-      if (/^\d{5,7}$/.test(l) && !cur.job_no) { cur.job_no = l; return; }
+      const nd = l.match(USERVE_NO_DATE);
+      if (nd && !cur.job_no) { cur.job_no = nd[1]; return; }
+      if (/^\d{5,8}$/.test(l) && !cur.job_no) { cur.job_no = l; return; }
       if (USERVE_COUNTY.test(l)) { cur.county = titleCase(l.replace(/ county/i, "")); return; }
       if (STREET_START.test(l) && !cur.address) { cur.address = l; return; }
       if (cur.address && !hasZip(cur.address) && /[A-Za-z]/.test(l)) { cur.address += ", " + l; }
