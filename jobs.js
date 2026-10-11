@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 29: jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 30: a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 29 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 30 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -721,9 +721,13 @@
 
   async function loadStops() {
     RS.all = await fetchJobs();
-    const waitingToday = RS.all.filter((j) => j.on_today && waitingPapers(j) && j.county === RS.county).length;
+    // A job with no county used to match NEITHER county and vanish off the route
+    // with no message. Now it shows up wherever you are until you set it.
+    const sameCounty = (j) => j.county === RS.county || !j.county;
+    const waitingToday = RS.all.filter((j) => j.on_today && waitingPapers(j) && sameCounty(j)).length;
     const today = RS.all.filter((j) => j.on_today && j.status === "Active" && !waitingPapers(j));
-    const inCounty = today.filter((j) => j.county === RS.county);
+    const inCounty = today.filter(sameCounty);
+    const noCounty = inCounty.filter((j) => !j.county);
     const noAddr = inCounty.filter(needsAddress);
     RS.stops = inCounty.filter((j) => !needsAddress(j))
       // Gas order rules the route. Deadlines show up in red instead of
@@ -733,6 +737,7 @@
 
     const msgs = [];
     const noPin = RS.stops.filter((j) => j.lat == null).length;
+    if (noCounty.length) msgs.push(`${noCounty.length} of today's stops ${noCounty.length > 1 ? "have" : "has"} no county set, so ${noCounty.length > 1 ? "they show" : "it shows"} on both routes: ${noCounty.map((j) => j.person || (j.address || "").split(",")[0] || "no name").join(", ")}. Open ${noCounty.length > 1 ? "them" : "it"} and set the county.`);
     if (noPin) msgs.push(`${noPin} stop${noPin > 1 ? "s have" : " has"} no map pin — open it and check the address.`);
     if (noAddr.length) msgs.push(`${noAddr.length} of today's jobs in ${RS.county} ${noAddr.length > 1 ? "are" : "is"} missing an address — fix in Jobs → Needs address.`);
     if (waitingToday) msgs.push(`${waitingToday} job${waitingToday > 1 ? "s are" : " is"} still waiting on papers from Jean, so ${waitingToday > 1 ? "they're" : "it's"} left off the route.`);
@@ -991,7 +996,7 @@
 
   function drawAddMore() {
     const { esc } = J();
-    const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && !j.in_attempts && j.county === RS.county && !needsAddress(j) && !waitingPapers(j));
+    const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && !j.in_attempts && (j.county === RS.county || !j.county) && !needsAddress(j) && !waitingPapers(j));
     byId("rAddList").innerHTML = pool.length ? pool.map((j) => `
       <div class="add-line">
         <div class="draft-text"><div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div><div class="draft-addr">${esc(j.address)}</div></div>
