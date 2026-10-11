@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 46: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 48: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1205,3 +1205,121 @@ ol.tight li { margin-bottom: 0.15rem; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 0.35rem;
 }
 .sheet-lines .sl-row { align-items: center; }
+
+/* =====================================================================
+   Six columns on a tablet: tighter tiles so the whole board fits
+   without each long name stacking three lines deep.
+   Phone layout (under 900px) is untouched — it already reads well.
+   ===================================================================== */
+@media (min-width: 900px) {
+  .job-cols.six .job-col { padding: 0.4rem; gap: 0.3rem; border-radius: 12px; }
+  .job-cols.six .col-head h2 { font-size: 0.95rem; line-height: 1.15; }
+  .job-cols.six .col-sub { font-size: 0.66rem; line-height: 1.2; }
+  .job-cols.six .col-count { font-size: 1.1rem; }
+  .job-cols.six .col-list { gap: 0.3rem; }
+
+  /* one job = one tight tile, never a three-line name */
+  .job-cols.six .jline {
+    min-height: 0; padding: 0.3rem 0.4rem; gap: 0.3rem;
+    border-left-width: 5px; border-radius: 8px;
+  }
+  .job-cols.six .jl-body { gap: 0; }
+  .job-cols.six .jl-row1 {
+    flex-wrap: nowrap; font-size: 0.84rem; line-height: 1.25; gap: 0.25rem;
+  }
+  .job-cols.six .jl-name {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
+  .job-cols.six .jobno { font-size: 0.72rem; flex-shrink: 0; }
+  .job-cols.six .jl-row2 { font-size: 0.72rem; line-height: 1.3; }
+  .job-cols.six .jl-tail { display: none; }   /* client + price: open the job to see it */
+  .job-cols.six .m { font-size: 0.6rem; padding: 0.05rem 0.25rem; }
+  .job-cols.six .jl-today,
+  .job-cols.six .jl-chk,
+  .job-cols.six .jl-open { width: 28px; height: 28px; font-size: 0.85rem; border-radius: 7px; }
+
+  /* the flag strip above a card (RUSH / DUE / NO PAPERS) on one line */
+  .job-cols.six .flag-row { gap: 0.2rem; margin-bottom: 0.15rem; }
+  .job-cols.six .flag-chip { font-size: 0.6rem; padding: 0.05rem 0.3rem; }
+
+  /* column action buttons (Print this list / Got them from Jean) */
+  .job-cols.six .btn.thin { font-size: 0.72rem; padding: 0.3rem 0.4rem; min-height: 0; }
+}
+
+/* =====================================================================
+   The count box, the ZIP ledger and the rush bar.
+   Soft light navy with dark text — never white writing on a dark block.
+   ===================================================================== */
+.tally {
+  background: #EDF1F7; border: 2px solid #C3D0E2; border-radius: 14px;
+  padding: 0.7rem 0.85rem; margin-bottom: 0.75rem; color: var(--navy);
+}
+.tally-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; }
+.tally-big { font-family: var(--serif); font-size: 1.65rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.tally-big em {
+  font-style: normal; font-family: inherit; font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--navy-2); margin-left: 0.4rem;
+}
+.tally-cash { font-family: var(--serif); font-size: 1.25rem; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+.tally-split { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+.tally-split b {
+  background: #fff; border: 1px solid #C3D0E2; border-radius: 7px;
+  padding: 0.12rem 0.5rem; font-size: 0.78rem; font-weight: 700; white-space: nowrap;
+}
+.tally-split b i { font-style: normal; color: var(--gold-text); margin-left: 0.25rem; font-variant-numeric: tabular-nums; }
+.tally-foot {
+  margin-top: 0.5rem; padding-top: 0.45rem; border-top: 1px solid #C3D0E2;
+  font-size: 0.82rem; color: var(--navy-2); font-weight: 600;
+}
+.tally-foot u { text-decoration: none; color: var(--navy); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ---------- stops by ZIP, to check against the paper stacks ---------- */
+.zips {
+  background: #EDF1F7; border: 2px solid #C3D0E2; border-radius: 14px;
+  padding: 0.65rem 0.85rem; margin-bottom: 0.75rem;
+}
+.zips h4 {
+  margin: 0 0 0.4rem; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--gold-text);
+}
+.zrow {
+  display: flex; align-items: baseline; gap: 0.5rem; padding: 0.3rem 0;
+  border-bottom: 1px solid #D7E0EC; font-variant-numeric: tabular-nums;
+}
+.zrow:last-of-type { border-bottom: 0; }
+.zrow b { font-size: 1.05rem; font-weight: 800; min-width: 4.4rem; }
+.zrow span { flex: 1; font-size: 0.8rem; color: var(--navy-2); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zrow u { text-decoration: none; font-size: 0.92rem; font-weight: 800; }
+.ztot {
+  margin-top: 0.45rem; padding-top: 0.5rem; border-top: 2px solid #A9BBD3;
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+.ztot b { font-family: var(--serif); font-size: 1.15rem; }
+.ztot u { text-decoration: none; font-family: var(--serif); font-size: 1.15rem; color: var(--green); }
+
+/* ---------- a rush sitting in the run ---------- */
+.alert.rush-warn {
+  background: #FBEAE5; border: 2px solid var(--red); color: #6B2517;
+  border-radius: 12px; padding: 0.6rem 0.8rem; font-weight: 600;
+}
+.alert.rush-warn > b {
+  display: block; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--red); margin-bottom: 0.25rem;
+}
+.rush-line { display: block; margin-top: 0.25rem; line-height: 1.4; }
+.rush-line em { font-style: normal; color: var(--navy-2); font-weight: 700; }
+.rush-jump {
+  background: var(--red); color: #fff; border: 0; border-radius: 8px;
+  padding: 0.25rem 0.6rem; font-size: 0.78rem; font-weight: 800; margin-left: 0.3rem;
+}
+
+/* ---------- per-job "on today's route" tick on a draft card ---------- */
+.flag.today.on { background: var(--green); border-color: var(--green); color: #fff; }
+.flag.today.off {
+  border-style: dashed; color: var(--navy-2); background: var(--ivory);
+  opacity: 0.85; cursor: default;
+}
+/* the card button that used to be a printer picture */
+.jl-today.gotit { background: var(--paper); border-color: var(--green); color: var(--green); font-weight: 800; }

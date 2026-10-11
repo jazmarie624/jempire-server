@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — app.js (version 17: version stamp on Home —  Attempts + Sheets replace Done + Invoices)
+// J EMPIRE SERVER — app.js (version 18: Home shows the stylesheet version too: version stamp on Home —  Attempts + Sheets replace Done + Invoices)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { app: 17 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { app: 18 });
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);
@@ -185,7 +185,11 @@
     const v = window.JES_VER || {};
     const box = $("#verLine");
     if (!box) return;
-    box.innerHTML = `<span>Version <b>${v.app || "?"}.${v.intake || "?"}.${v.jobs || "?"}.${v.office || "?"}</b></span>
+    // The stylesheet has no script of its own, so read its version off the <link>
+    const sheet = document.querySelector('link[rel="stylesheet"][href*="style.css"]');
+    const styleV = sheet ? (sheet.getAttribute("href").match(/v=(\d+)/) || [])[1] : null;
+    box.innerHTML = `<span>Version <b>${v.app || "?"}.${v.intake || "?"}.${v.jobs || "?"}.${v.office || "?"}</b>
+      · style <b>${styleV || "?"}</b></span>
       <button class="ver-reload" id="verReload">Check for an update</button>`;
     $("#verReload").onclick = () => {
       // Jump to a fresh address so the phone can't hand back a stale page

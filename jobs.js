@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 30: a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 31: count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 30 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 31 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -14,7 +14,9 @@
     const dm = dueMark(j);
     if (dm) out.push(dm.replace(/class="m /g, 'class="flag-chip '));
     if (j.job_type) out.push(`<span class="flag-chip ${/expedit|rush|same.?day|asap|priority/i.test(j.job_type) ? "rush" : "type"}">📌 ${J().esc(j.job_type)}</span>`);
-    if (j.service === "Rush" && !j.job_type) out.push(`<span class="flag-chip rush">⚡ Rush</span>`);
+    // A rush can land on a job that already has a service type (Routine, 2 Day Post).
+    // It used to be hidden the moment job_type was set, which made ProVest rushes invisible.
+    if (j.service === "Rush") out.push(`<span class="flag-chip rush">⚡ Rush</span>`);
     if (j.is_foreclosure) out.push(`<span class="flag-chip fore">📚 Foreclosure${(j.packets || 1) > 1 ? " ×" + j.packets : ""}</span>`);
     if (j.is_business) out.push(`<span class="flag-chip biz">🏢 Business · 10–12 / 2–4</span>`);
     if (waitingPapers(j)) out.push(`<span class="flag-chip paper">📄 Waiting on papers</span>`);
@@ -83,6 +85,7 @@
           <input id="jq" class="search" type="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
           <div class="seg" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="${c === JS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
+        <div id="jTally"></div>
         <div class="chips phone-only" id="jColPick"></div>
         <div id="jBody"><p class="muted">Loading…</p></div>
         <div id="printSheet" class="print-only"></div>
@@ -146,7 +149,7 @@
     const marks = [
       dueMark(j),
       typeMark(j),
-      j.service === "Rush" && !j.job_type ? `<span class="m rush">⚡ RUSH</span>` : "",
+      j.service === "Rush" ? `<span class="m rush">⚡ RUSH</span>` : "",
       j.is_foreclosure ? `<span class="m fore">📚 ${(j.packets || 1) > 1 ? "×" + j.packets : "FORECL"}</span>` : "",
       j.is_business ? `<span class="m biz">🏢 10–12 / 2–4</span>` : "",
       wait ? `<span class="m pap">📄 NO PAPERS</span>` : "",
@@ -158,7 +161,7 @@
         <span class="jl-row1">${marks}<b class="jl-name">${esc(title)}</b>${j.job_no ? `<span class="jobno">#${esc(j.job_no)}</span>` : ""}</span>
         <span class="jl-row2">${red ? `<b class="bad">${esc(P().problems(j).join(" · "))}</b> ` : ""}${esc(j.address || "no address yet")}<span class="jl-tail"> · ${esc(j.client || "")}${j.attempt_count && !isDone(j) ? ` · att ${j.attempt_count}/5` : ""}${j.price ? ` · ${money(j.price)}` : ""}</span></span>
       </span>
-      ${wait ? `<button class="jl-today print" data-papers="${j.id}" aria-label="Mark the papers printed for ${esc(title)}">🖨</button>`
+      ${wait ? `<button class="jl-today gotit" data-papers="${j.id}" aria-label="${PAPER_CLIENTS.includes(j.client) ? "Got the papers from Jean for" : "Printed the papers for"} ${esc(title)}">✓</button>`
         : j.status === "Active" && !red ? `<button class="jl-today ${j.on_today ? "on" : ""}" data-today="${j.id}" aria-label="${j.on_today ? "Remove from" : "Add to"} today">${j.on_today ? "✓" : "+"}</button>` : ""}
     </div>`;
   }
@@ -179,8 +182,8 @@
         <div class="jc-meta">${esc(j.client || "")}${j.attempt_count && !isDone(j) ? ` · ${j.attempt_count}/5` : ""}${j.due_date && !isDone(j) ? ` · ${esc(fmtDate(j.due_date).slice(0, 5))}` : ""} · <b>${money(j.price)}</b> ${flagChips(j)}</div>
         <div class="jc-btns">
           ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
-          ${wait ? `<button class="today-btn paper-btn" data-gotpaper="${j.id}">📄 Got papers</button>` : ""}
-          ${j.status === "Active" && !wait && PAPER_CLIENTS.includes(j.client) ? `<button class="mini-flag" data-nopaper="${j.id}" aria-label="Mark waiting on papers">📄</button>` : ""}
+          ${wait ? `<button class="today-btn paper-btn" data-gotpaper="${j.id}">✓ ${PAPER_CLIENTS.includes(j.client) ? "Got it from Jean" : "Printed it"}</button>` : ""}
+          ${j.status === "Active" && !wait ? `<button class="mini-flag" data-nopaper="${j.id}" aria-label="Mark waiting on papers">📄</button>` : ""}
           <button class="mini-flag ${j.service === "Rush" ? "on rush" : ""}" data-jflag="service" data-id="${j.id}" aria-label="Rush">⚡</button>
           <button class="mini-flag ${j.is_business ? "on biz" : ""}" data-jflag="is_business" data-id="${j.id}" aria-label="Business">🏢</button>
           <button class="btn ghost thin" data-open="${j.id}">${red ? "Fix" : "Open"}</button>
@@ -260,6 +263,28 @@
     }).join("")}</div>`;
   }
 
+  // ---------- the count box: what you're holding, before you scroll ----------
+  function tallyBox(active) {
+    const { esc, money } = J();
+    if (!active.length) return "";
+    const cash = active.reduce((a, j) => a + Number(j.price || 0), 0);
+    const byClient = {};
+    active.forEach((j) => { const c = j.client || "No client"; byClient[c] = (byClient[c] || 0) + 1; });
+    const split = Object.entries(byClient).sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => `<b>${esc(shortName(c))}<i>${n}</i></b>`).join("");
+    const today = active.filter((j) => j.on_today && !waitingPapers(j)).length;
+    const ready = active.filter((j) => !j.on_today && !waitingPapers(j) && !needsAddress(j)).length;
+    const waiting = active.filter(waitingPapers).length;
+    return `<div class="tally">
+      <div class="tally-top">
+        <span class="tally-big">${active.length}<em>jobs in hand</em></span>
+        <span class="tally-cash">${money(cash)}</span>
+      </div>
+      <div class="tally-split">${split}</div>
+      <div class="tally-foot"><u>${today}</u> on today's route · <u>${ready}</u> ready to add · <u>${waiting}</u> waiting on papers</div>
+    </div>`;
+  }
+
   function drawList() {
     const { esc } = J();
     const q = JS.q.toLowerCase().trim();
@@ -269,14 +294,17 @@
     const body = byId("jBody");
 
     if (JS.view === "history") {
+      byId("jTally").innerHTML = "";
       drawHistory(q, byCounty);
     } else if (q) {
       // Searching in Working shows one list across everything, including finished jobs
+      byId("jTally").innerHTML = "";
       byId("jColPick").innerHTML = "";
       const hits = JS.jobs.filter((j) => byCounty(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
       body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(JS.dense ? jobLine : jobCard).join("") || ""}</div>`;
     } else {
       const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && c.test(j)).sort(sortJobs) }));
+      byId("jTally").innerHTML = tallyBox(JS.jobs.filter((j) => byCounty(j) && j.status === "Active"));
       byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.short} <b>${jobs.length}</b></button>`).join("");
       body.innerHTML = `<div class="job-cols six">${lists.map(({ c, jobs }) => `
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
@@ -439,7 +467,7 @@
         </div>
         <label>Notes<textarea id="g_notes" class="notes-box" rows="5">${esc(j.notes || "")}</textarea></label>
         <div class="toggle-list">
-          ${PAPER_CLIENTS.includes(j.client) ? `<label class="tgl"><input type="checkbox" id="g_has_papers" ${j.has_papers !== false ? "checked" : ""}><span>📄 I have the papers for this job</span></label>` : ""}
+          <label class="tgl"><input type="checkbox" id="g_has_papers" ${j.has_papers !== false ? "checked" : ""}><span>📄 I have the papers for this job${PAPER_CLIENTS.includes(j.client) ? " (Jean hands these over)" : " (you print these)"}</span></label>
           <label class="tgl"><input type="checkbox" id="g_is_business" ${j.is_business ? "checked" : ""}><span>🏢 Business — serve 10–12 or 2–4 only</span></label>
           <label class="tgl"><input type="checkbox" id="g_is_foreclosure" ${j.is_foreclosure ? "checked" : ""}><span>📚 Foreclosure — pays per packet</span></label>
           <label class="tgl inset"><span>How many packets?</span><input id="g_packets" inputmode="numeric" value="${j.packets || 1}"></label>
@@ -638,6 +666,7 @@
           <h1>Today's Route</h1>
           <div class="seg" id="rCounty">${["Osceola", "Orange"].map((c) => `<button class="${c === RS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
+        <div id="rZips"></div>
         <div id="rMsg"></div>
         ${RS.started ? `<div class="route-live">● Route in progress — stops re-sort from where you are after each one</div>` : ""}
         <div id="rNear" class="near-wrap"></div>
@@ -719,6 +748,40 @@
     drawRoute();
   }
 
+  // Pull one stop to the front of the run, from the list or from the rush bar.
+  async function toTop(id) {
+    const i = RS.stops.findIndex((s) => s.id === id);
+    if (i <= 0) return;
+    const [j] = RS.stops.splice(i, 1);
+    RS.stops.unshift(j);
+    await saveOrder();
+    drawStops(); drawMap(); drawZipLedger();
+    J().toast((j.person || "That stop") + " is next");
+  }
+
+  // ---------- how many stops sit in each ZIP, to check against the paper stacks ----------
+  function drawZipLedger() {
+    const box = byId("rZips");
+    if (!box) return;
+    const { esc, money } = J();
+    if (!RS.stops.length) { box.innerHTML = ""; return; }
+    const zip = (j) => ((j.address || "").match(/\b(\d{5})(?:-\d{4})?\b/) || [])[1] || "no ZIP";
+    const town = (j) => { const p = (j.address || "").split(","); return (p[p.length - 2] || "").trim(); };
+    const g = {};
+    RS.stops.forEach((j) => {
+      const z = zip(j);
+      if (!g[z]) g[z] = { n: 0, cash: 0, town: town(j) };
+      g[z].n++; g[z].cash += Number(j.price || 0);
+    });
+    const rows = Object.entries(g).sort((a, b) => b[1].n - a[1].n)
+      .map(([z, d]) => `<div class="zrow"><b>${esc(z)}</b><span>${esc(d.town)}</span><u>${d.n} stop${d.n > 1 ? "s" : ""}</u></div>`).join("");
+    const cash = RS.stops.reduce((a, j) => a + Number(j.price || 0), 0);
+    box.innerHTML = `<div class="zips">
+      <h4>Stops by ZIP</h4>${rows}
+      <div class="ztot"><b>${RS.stops.length} stop${RS.stops.length > 1 ? "s" : ""}</b><u>${money(cash)}</u></div>
+    </div>`;
+  }
+
   async function loadStops() {
     RS.all = await fetchJobs();
     // A job with no county used to match NEITHER county and vanish off the route
@@ -743,6 +806,18 @@
     if (waitingToday) msgs.push(`${waitingToday} job${waitingToday > 1 ? "s are" : " is"} still waiting on papers from Jean, so ${waitingToday > 1 ? "they're" : "it's"} left off the route.`);
     if (otherCounty) msgs.push(`${otherCounty} of today's jobs ${otherCounty > 1 ? "are" : "is"} in the other county and not shown here.`);
     byId("rMsg").innerHTML = msgs.map((m) => `<div class="alert soft">${J().esc(m)}</div>`).join("");
+    drawZipLedger();
+
+    // A rush can come from anybody, Jean included. Say where it sits in the run.
+    const rushes = RS.stops.map((j, i) => ({ j, n: i + 1 })).filter(({ j }) => j.service === "Rush");
+    if (rushes.length) {
+      const lines = rushes.map(({ j, n }) => `<span class="rush-line"><b>${J().esc(j.person || (j.address || "").split(",")[0] || "a stop")}</b>
+        is <b>stop ${n} of ${RS.stops.length}</b> — ${J().esc(j.address || "no address")}
+        ${n > 1 ? `<button class="rush-jump" data-rushtop="${j.id}">Move it to stop 1</button>` : `<em>already first</em>`}</span>`).join("");
+      byId("rMsg").insertAdjacentHTML("afterbegin",
+        `<div class="alert rush-warn"><b>⚡ ${rushes.length} rush ${rushes.length > 1 ? "jobs" : "job"} today</b>${lines}</div>`);
+      byId("rMsg").querySelectorAll("[data-rushtop]").forEach((b) => b.onclick = () => toTop(b.dataset.rushtop));
+    }
 
     // The gas order stands, but if a last-chance job sits late in the run and
     // you don't finish, that's the one you lose. Say so.
@@ -845,15 +920,7 @@
         </div>`}
       </div>`;
     }).join("");
-    box.querySelectorAll("[data-top]").forEach((b) => b.onclick = async () => {
-      const i = Number(b.dataset.top);
-      if (i <= 0) return;
-      const [j] = RS.stops.splice(i, 1);
-      RS.stops.unshift(j);
-      await saveOrder();
-      drawStops(); drawMap();
-      J().toast((j.person || "That stop") + " is next");
-    });
+    box.querySelectorAll("[data-top]").forEach((b) => b.onclick = () => toTop(RS.stops[Number(b.dataset.top)] && RS.stops[Number(b.dataset.top)].id));
     box.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => move(Number(b.dataset.up), -1));
     box.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => move(Number(b.dataset.down), 1));
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openJob(RS.stops.find((j) => j.id === b.dataset.edit), drawRoute));

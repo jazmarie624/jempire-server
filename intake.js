@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 29: Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 30: one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 29 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 30 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -96,6 +96,7 @@
     return { client, job_no: "", person: "", address: "", county: "", service: "Standard",
       due_date: "", price: null, notes: "", raw_text: "", private_phone: "", private_email: "", paid_upfront: false,
       has_papers: false,  // starts OFF — tick it as the papers come in hand
+      add_today: true,    // per job, so one paste can put some on today and park the rest
       is_foreclosure: false, packets: 1, is_business: false, on_hold: false, job_type: "", attempt_count: 0 };
   }
   // Same name next time = same address filled in (hospitals, water authority, etc.)
@@ -801,6 +802,22 @@
     });
   }
 
+  // Each card decides for itself whether it goes on today's run. A job with no
+  // papers can't be ticked at all — it says which pile it's stuck in instead.
+  const JEANS = ["ProVest", "Userve"];
+  function routeBlock(d) {
+    if (d.on_hold) return "on hold";
+    if (problems(d).length) return "needs fixing first";
+    if (d.has_papers === false) return JEANS.includes(d.client) ? "Jean still has the papers" : "you haven't printed it yet";
+    return "";
+  }
+  function todayTick(d, i) {
+    const why = routeBlock(d);
+    if (why) return `<span class="flag today off" title="Can't route yet — ${J().esc(why)}">☐ Can't route yet · ${J().esc(why)}</span>`;
+    const on = d.add_today !== false;
+    return `<button class="flag today ${on ? "on" : ""}" data-flag="add_today" data-i="${i}">${on ? "✓ On today's route" : "☐ Not today"}</button>`;
+  }
+
   function drawDrafts() {
     const { esc } = J();
     const box = document.getElementById("inDrafts");
@@ -824,6 +841,7 @@
     const dups = withP.filter((x) => x.dup).length;
     const red = withP.filter((x) => x.p.length && !x.dup).length;
     const savable = withP.length - dups;
+    const goToday = S.drafts.filter((d) => !duplicateOf(d, S.existing) && !routeBlock(d) && d.add_today !== false).length;
     const ready = savable - red;
 
     document.getElementById("inSummary").innerHTML = S.drafts.length
@@ -850,6 +868,7 @@
           ${d.is_foreclosure ? `<label class="pk">packets <input inputmode="numeric" data-pk="${i}" value="${d.packets || 1}" aria-label="How many packets"></label>` : ""}
           <button class="flag biz ${d.is_business ? "on" : ""}" data-flag="is_business" data-i="${i}">🏢 Business</button>
           <button class="flag hold ${d.on_hold ? "on" : ""}" data-flag="on_hold" data-i="${i}">⏸ Hold</button>
+          ${todayTick(d, i)}
           <span class="d2-price">${J().money(d.price || 0)}</span>
         </div>
       </div>`;
@@ -933,14 +952,12 @@
     const area = document.getElementById("inSaveArea");
     if (!S.drafts.length) { area.innerHTML = ""; return; }
     area.innerHTML = `
-      <label class="check-line"><input type="checkbox" id="inToday" ${S.addToday ? "checked" : ""}> Also add to Today's route</label>
-      <p class="muted small center">Only jobs with <b>📄 Papers in hand</b> ticked go on a route. The rest wait in <b>Need papers printed</b> or <b>Waiting on Jean</b>.</p>
-      <button class="btn go" id="inSave" ${savable ? "" : "disabled"}>Save ${savable} Job${savable === 1 ? "" : "s"}</button>
+      <p class="muted small center">Each card says whether it goes on today's run. Only jobs with <b>📄 Papers in hand</b> can be ticked — the rest wait in <b>Need papers printed</b> or <b>Waiting on Jean</b>.</p>
+      <button class="btn go" id="inSave" ${savable ? "" : "disabled"}>Save ${savable} Job${savable === 1 ? "" : "s"}${goToday ? ` · ${goToday} onto today` : ""}</button>
       ${red ? `<p class="muted small center">Red jobs can still be saved — you'll be asked what to do with them.</p>` : ""}
       ${dups ? `<button class="btn ghost" id="inDropDups">✕ Clear the ${dups} duplicate${dups === 1 ? "" : "s"}</button>
         <p class="muted small center">Already saved, so they won't be saved again. Tap ✕ on any card to drop just that one.</p>` : ""}
       <button class="btn ghost" id="inClear">Clear all drafts</button>`;
-    document.getElementById("inToday").onchange = (e) => { S.addToday = e.target.checked; };
     document.getElementById("inSave").onclick = checkBeforeSave;
     const dd = document.getElementById("inDropDups");
     if (dd) dd.onclick = () => {
@@ -1111,7 +1128,7 @@
       price: Number(d.price) || 0, notes: d.notes || null, raw_text: d.raw_text || null,
       status: d.on_hold ? "On Hold" : "Active", has_papers: d.has_papers !== false,
       is_foreclosure: !!d.is_foreclosure, packets: d.packets || 1, is_business: !!d.is_business,
-      on_today: S.addToday && !problems(d).length && d.has_papers !== false && !d.on_hold,
+      on_today: d.add_today !== false && !problems(d).length && d.has_papers !== false && !d.on_hold,
       private_phone: d.private_phone || null, private_email: d.private_email || null,
       paid_upfront: !!d.paid_upfront,
       source: d.source || "Paste",
@@ -1135,8 +1152,8 @@
     if (learned) await J().db.from("jes_settings").upsert({ key: "known_addresses", value: S.known });
     await loadData();
     drawDrafts();
-    const later = rows.filter((r) => !r.on_today && S.addToday).length;
-    J().refreshBadges && J().refreshBadges(); J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${later ? ` · ${later} waiting for an address` : ""}`);
+    const later = rows.filter((r) => !r.on_today).length;
+    J().refreshBadges && J().refreshBadges(); J().toast(`Saved ${rows.length} job${rows.length === 1 ? "" : "s"}${later ? ` · ${later} not on today` : ""}`);
   }
 
   async function saveIgnore() {
