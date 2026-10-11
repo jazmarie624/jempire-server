@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 50: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 51: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1371,4 +1371,20 @@ ol.tight li { margin-bottom: 0.15rem; }
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     font-size: 0.86rem; line-height: 1.25;
   }
+}
+
+/* ---------- tap a client in the count box to see only their jobs ---------- */
+.tally-chip {
+  background: #fff; border: 1px solid #C3D0E2; border-radius: 7px;
+  padding: 0.18rem 0.55rem; font-size: 0.8rem; font-weight: 700;
+  white-space: nowrap; color: var(--navy); font-family: inherit; cursor: pointer;
+}
+.tally-chip i { font-style: normal; color: var(--gold-text); margin-left: 0.28rem; font-variant-numeric: tabular-nums; }
+.tally-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.tally-chip.on i { color: var(--gold); }
+.tally.filtered { border-color: var(--navy); }
+.tally-back {
+  background: var(--navy); color: #fff; border: 0; border-radius: 7px;
+  padding: 0.15rem 0.55rem; font-size: 0.78rem; font-weight: 800;
+  font-family: inherit; cursor: pointer;
 }

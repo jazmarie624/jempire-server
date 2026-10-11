@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 30: one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 31: a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 30 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 31 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -348,6 +348,14 @@
     };
     ls.forEach((l) => {
       if (isName(l) && !(cur && cur.address && !hasZip(cur.address) && /\b(FL|KISSIMMEE|ORLANDO)\b/i.test(l))) {
+        // A long name wraps onto a second line — "…LLC aka Allai Llc by serving"
+        // then "Sieharra Nichole Gissome". Two name lines back to back with no
+        // job number or address between them are ONE name, not two jobs.
+        if (cur && !cur.job_no && !cur.address) {
+          cur.person += " " + l;
+          cur.lines.push(l);
+          return;
+        }
         cur = { lines: [l], person: l, job_no: "", address: "", county: "" };
         jobs.push(cur);
         return;

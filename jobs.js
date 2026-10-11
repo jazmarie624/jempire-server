@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 32: road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 33: tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 32 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 33 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -70,7 +70,7 @@
     { id: "hold",   short: "Hold",   title: "On hold",           sub: "Paused or has a problem",        test: (j) => j.status === "On Hold" }
   ];
   const FILTER_TO_COL = { "Needs address": "fix", "Papers": "papers", "Jean": "jean", "Active": "ready", "Today": "today", "On Hold": "hold" };
-  const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", q: "", jobs: [], invs: {}, dense: localStorage.getItem("jes_dense") !== "cards" };
+  const JS = { col: "ready", hcol: "Ody's", view: "working", county: "All", client: "All", q: "", jobs: [], invs: {}, dense: localStorage.getItem("jes_dense") !== "cards" };
 
   async function drawJobs(opts) {
     if (opts && opts.filter && FILTER_TO_COL[opts.filter]) JS.col = FILTER_TO_COL[opts.filter];
@@ -270,18 +270,21 @@
     const cash = active.reduce((a, j) => a + Number(j.price || 0), 0);
     const byClient = {};
     active.forEach((j) => { const c = j.client || "No client"; byClient[c] = (byClient[c] || 0) + 1; });
+    // Tap a client to see only that client's jobs — no extra tab needed
     const split = Object.entries(byClient).sort((a, b) => b[1] - a[1])
-      .map(([c, n]) => `<b>${esc(shortName(c))}<i>${n}</i></b>`).join("");
-    const today = active.filter((j) => j.on_today && !waitingPapers(j)).length;
-    const ready = active.filter((j) => !j.on_today && !waitingPapers(j) && !needsAddress(j)).length;
-    const waiting = active.filter(waitingPapers).length;
-    return `<div class="tally">
+      .map(([c, n]) => `<button class="tally-chip ${JS.client === c ? "on" : ""}" data-client="${esc(c)}">${esc(shortName(c))}<i>${n}</i></button>`).join("");
+    const shown = JS.client === "All" ? active : active.filter((j) => (j.client || "No client") === JS.client);
+    const today = shown.filter((j) => j.on_today && !waitingPapers(j)).length;
+    const ready = shown.filter((j) => !j.on_today && !waitingPapers(j) && !needsAddress(j)).length;
+    const waiting = shown.filter(waitingPapers).length;
+    const only = JS.client !== "All";
+    return `<div class="tally ${only ? "filtered" : ""}">
       <div class="tally-top">
-        <span class="tally-big">${active.length}<em>jobs in hand</em></span>
-        <span class="tally-cash">${money(cash)}</span>
+        <span class="tally-big">${only ? shown.length : active.length}<em>${only ? esc(shortName(JS.client)) + " jobs" : "jobs in hand"}</em></span>
+        <span class="tally-cash">${money(only ? shown.reduce((a, j) => a + Number(j.price || 0), 0) : cash)}</span>
       </div>
       <div class="tally-split">${split}</div>
-      <div class="tally-foot"><u>${today}</u> on today's route · <u>${ready}</u> ready to add · <u>${waiting}</u> waiting on papers</div>
+      <div class="tally-foot">${only ? `<button class="tally-back" data-client="All">← All ${active.length} jobs</button> · ` : ""}<u>${today}</u> on today's route · <u>${ready}</u> ready to add · <u>${waiting}</u> waiting on papers</div>
     </div>`;
   }
 
@@ -303,8 +306,13 @@
       const hits = JS.jobs.filter((j) => byCounty(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
       body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(JS.dense ? jobLine : jobCard).join("") || ""}</div>`;
     } else {
-      const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && c.test(j)).sort(sortJobs) }));
+      const byClient = (j) => JS.client === "All" || (j.client || "No client") === JS.client;
+      const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && byClient(j) && c.test(j)).sort(sortJobs) }));
       byId("jTally").innerHTML = tallyBox(JS.jobs.filter((j) => byCounty(j) && j.status === "Active"));
+      byId("jTally").querySelectorAll("[data-client]").forEach((b) => b.onclick = () => {
+        JS.client = b.dataset.client === JS.client ? "All" : b.dataset.client;
+        drawList();
+      });
       byId("jColPick").innerHTML = lists.map(({ c, jobs }) => `<button class="chip ${c.id === JS.col ? "on" : ""} ${c.id === "fix" && jobs.length ? "alert-chip" : ""}" data-col="${c.id}">${c.short} <b>${jobs.length}</b></button>`).join("");
       body.innerHTML = `<div class="job-cols six">${lists.map(({ c, jobs }) => `
         <div class="job-col col-${c.id} ${c.id === JS.col ? "phone-on" : ""}">
