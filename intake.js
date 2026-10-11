@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 27: papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 28: Userve reads mixed-case names (Amanda Her) —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 27 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 28 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -317,17 +317,30 @@
   }
 
   // ---------- Userve ----------
-  const USERVE_JUNK = /^(open|closed|mwa|mdewa|attempt\s*\/\s*serve|view on map|attempt|serve)$/i;
+  const USERVE_JUNK = /^(open|closed|mwa|mdewa|attempt\s*\/\s*serve|view on map|attempt|serve|status|county|name|case|re|re:)$/i;
+  const USERVE_COUNTY = /^(osceola|orange|polk|lake|seminole|brevard|volusia|hillsborough|sumter|marion)( county)?$/i;
   function parseUserve(text, extra) {
     const ls = removeIgnored(lines(text), extra)
       .filter((l) => !USERVE_JUNK.test(l))
-      .filter((l) => !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(l)); // assigned date
+      .filter((l) => !/^[•·*\-\s]*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/.test(l)); // assigned / bullet date
     const jobs = [];
     let cur = null;
-    const isName = (l) => /^[A-Z][A-Z0-9&.,'\- ]*[A-Z.]$/.test(l) && /[A-Z]{2}/.test(l) &&
-      !STREET_START.test(l) && !/^(OSCEOLA|ORANGE)( COUNTY)?$/.test(l) && !/^\d+$/.test(l);
+    // A name is any line that reads like a person or a company, whatever the casing.
+    // Userve mixes "SUAMY ROSARIO" and "Amanda Her" in the same list.
+    const isName = (l) => {
+      const s = l.trim();
+      if (!s || s.length < 3) return false;
+      if (STREET_START.test(s)) return false;           // 2464 Parsons Pond Cir
+      if (/^[\d•·*#(]/.test(s)) return false;           // job #, bullet, phone
+      if (/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s)) return false; // any date
+      if (USERVE_JUNK.test(s) || USERVE_COUNTY.test(s)) return false;
+      if (/\b(fl|florida)\b/i.test(s)) return false;    // wrapped address tail: "Kissimmee, FL"
+      if (!/^[A-Za-z][A-Za-z0-9&.,'’\-\/ ]*$/.test(s)) return false; // letters-ish only
+      // Needs a first and last name, unless it's clearly a business
+      return s.split(/\s+/).length >= 2 || BIZ.test(s);
+    };
     ls.forEach((l) => {
-      if (isName(l) && !(cur && cur.address && !hasZip(cur.address) && /\b(FL|KISSIMMEE|ORLANDO)\b/.test(l))) {
+      if (isName(l) && !(cur && cur.address && !hasZip(cur.address) && /\b(FL|KISSIMMEE|ORLANDO)\b/i.test(l))) {
         cur = { lines: [l], person: l, job_no: "", address: "", county: "" };
         jobs.push(cur);
         return;
@@ -335,7 +348,7 @@
       if (!cur) return;
       cur.lines.push(l);
       if (/^\d{5,7}$/.test(l) && !cur.job_no) { cur.job_no = l; return; }
-      if (/^(OSCEOLA|ORANGE)( COUNTY)?$/i.test(l)) { cur.county = titleCase(l.replace(/ county/i, "")); return; }
+      if (USERVE_COUNTY.test(l)) { cur.county = titleCase(l.replace(/ county/i, "")); return; }
       if (STREET_START.test(l) && !cur.address) { cur.address = l; return; }
       if (cur.address && !hasZip(cur.address) && /[A-Za-z]/.test(l)) { cur.address += ", " + l; }
     });
@@ -343,7 +356,7 @@
       const d = blankDraft("Userve");
       d.person = titleCase(j.person);
       d.job_no = j.job_no;
-      const cm = j.address.match(/\b(OSCEOLA|ORANGE)\b/i);
+      const cm = j.address.match(/\b(osceola|orange|polk|lake|seminole|brevard|volusia|hillsborough|sumter|marion)\b/i);
       d.address = cleanAddress(j.address);
       d.county = j.county || (cm ? titleCase(cm[1]) : "") || countyFor(d.address);
       d.raw_text = j.lines.join("\n");
