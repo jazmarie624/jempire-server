@@ -1,12 +1,12 @@
-// J EMPIRE SERVER — office.js (version 27: miles day by day, with a spreadsheet: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 28: every stop behind a day’s miles, and a real mileage log —  miles day by day, with a spreadsheet: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 27 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 28 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
-  const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7, showMiles: false };
+  const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7, showMiles: false, openDay: null, stops: [] };
 
   const todayISO = () => new Date().toISOString().slice(0, 10);
   const num = (v) => (v == null || v === "" ? null : Number(v));
@@ -55,6 +55,10 @@
     O.rates = rates.data || [];
     O.sheets = sheets.data || [];
     O.jobs = jobs.data || [];
+    // Every door you stopped at, with the time — this is what turns a mileage
+    // total into a record you could actually hand someone.
+    const att = await db.from("jes_attempts").select("job_id,at,kind");
+    O.stops = att.data || [];
     O.goal = goal.data ? Number(goal.data.value) : 500;
     O.rate = mrate.data ? Number(mrate.data.value) : 0.7;
     return !rates.error && !sheets.error && !jobs.error;
@@ -454,6 +458,51 @@
     byId("mMiles").onclick = () => { O.showMiles = !O.showMiles; drawMoney(opts); };
     const mx = byId("mMilesCsv");
     if (mx) mx.onclick = () => milesCsv(thisYear);
+    document.querySelectorAll("[data-day]").forEach((b) => b.onclick = () => {
+      O.openDay = O.openDay === b.dataset.day ? null : b.dataset.day;
+      drawMoney(opts);
+    });
+  }
+
+  // ---------- rebuild one day's actual driving from the stops you made ----------
+  const HOME = (() => {
+    try { const h = JSON.parse(localStorage.getItem("jes_home_ll") || "null"); if (h && h.lat) return h; } catch (e) {}
+    return { lat: 28.2489, lng: -81.2812 };   // St. Cloud
+  })();
+  const ROAD = 1.3;   // straight line always undercounts the road
+  function legMiles(a, b) {
+    if (!a || !b || a.lat == null || b.lat == null) return null;
+    const R = 3958.8, rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h)) * ROAD;
+  }
+  const dayOf = (ts) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  // Returns the stops you made that day, in the order you made them, each with
+  // the miles driven to get there. Starts and ends at home.
+  function dayTrip(day) {
+    const byId = {};
+    O.jobs.forEach((j) => { byId[j.id] = j; });
+    const seen = new Set();
+    const stops = (O.stops || [])
+      .filter((s) => dayOf(s.at) === day && byId[s.job_id])
+      .sort((a, b) => new Date(a.at) - new Date(b.at))
+      .filter((s) => { const k = s.job_id + "|" + s.at; if (seen.has(k)) return false; seen.add(k); return true; })
+      .map((s) => ({ job: byId[s.job_id], at: s.at, kind: s.kind }));
+    let from = HOME, total = 0;
+    const legs = stops.map((s) => {
+      const m = legMiles(from, s.job);
+      if (m != null) { total += m; from = s.job; }
+      return { ...s, miles: m, running: total };
+    });
+    const home = legMiles(from, HOME);
+    if (home != null) total += home;
+    return { legs, home, total };
   }
 
   // ---------- every day you drove, newest first ----------
@@ -464,12 +513,16 @@
         Build a route, mark your stops, and each day lands here on its own line.</p></div>`;
     }
     const rows = days.slice().sort((a, b) => String(b.day).localeCompare(String(a.day)))
-      .map((m) => `<div class="mrow">
-        <b>${esc(fmtDay(m.day))}</b>
-        <span>${esc(m.county || "")}${m.stops ? ` · ${m.stops} stop${m.stops === 1 ? "" : "s"}` : ""}</span>
-        <u>${Number(m.miles || 0).toFixed(1)} mi</u>
-        <i>${money(m.amount || 0)}</i>
-      </div>`).join("");
+      .map((m) => {
+        const open = O.openDay === m.day;
+        const trip = open ? dayTrip(m.day) : null;
+        return `<button class="mrow mtap ${open ? "open" : ""}" data-day="${esc(m.day)}">
+          <b>${esc(fmtDay(m.day))}</b>
+          <span>${esc(m.county || "")}${m.stops ? ` · ${m.stops} stop${m.stops === 1 ? "" : "s"}` : ""} · ${open ? "hide the stops ▲" : "see the stops ▼"}</span>
+          <u>${Number(m.miles || 0).toFixed(1)} mi</u>
+          <i>${money(m.amount || 0)}</i>
+        </button>` + (open ? tripPanel(trip, m) : "");
+      }).join("");
     return `<div class="miles-panel">
       <div class="mrow mhead"><b>Day</b><span>Where</span><u>Miles</u><i>Deduction</i></div>
       ${rows}
@@ -481,11 +534,51 @@
     </div>`;
   }
 
+  // The stops behind one day's mileage — where you went, and why
+  function tripPanel(trip, row) {
+    const { esc, money } = J();
+    if (!trip.legs.length) {
+      return `<div class="trip"><p class="muted small">No stops recorded for this day — the miles came from an
+        older version that only kept the total.</p></div>`;
+    }
+    const lines = trip.legs.map((s, i) => `<div class="tleg">
+      <b>${i + 1}</b>
+      <span class="tleg-who">${esc(s.job.person || "(no name)")}${s.job.job_no ? ` · #${esc(s.job.job_no)}` : ""}
+        <em>${esc(s.job.address || "no address")}</em>
+        <u>${esc(s.job.client || "")} · ${esc(s.kind)} · ${esc(clock(s.at))}</u></span>
+      <i>${s.miles == null ? "—" : s.miles.toFixed(1) + " mi"}</i>
+    </div>`).join("");
+    return `<div class="trip">
+      <div class="tleg thome"><b>🏠</b><span class="tleg-who">Left home<em>352 Pineland Ct, St. Cloud</em></span><i>—</i></div>
+      ${lines}
+      <div class="tleg thome"><b>🏠</b><span class="tleg-who">Home again</span><i>${trip.home == null ? "—" : trip.home.toFixed(1) + " mi"}</i></div>
+      <div class="tleg ttot"><b></b><span class="tleg-who">${trip.legs.length} stop${trip.legs.length === 1 ? "" : "s"} · process serving</span>
+        <i>${trip.total.toFixed(1)} mi · ${money(row.amount || 0)}</i></div>
+    </div>`;
+  }
+
   function milesCsv(days) {
-    const rows = [["Date", "County", "Stops", "Miles", "Deduction", "Note"]].concat(
-      days.slice().sort((a, b) => String(a.day).localeCompare(String(b.day)))
-        .map((m) => [m.day, m.county || "", m.stops || "", Number(m.miles || 0).toFixed(1),
-          Number(m.amount || 0).toFixed(2), m.note || "Process serving route"]));
+    // Every stop on every day, because a mileage log needs the destination
+    // and the reason, not just a number.
+    const rows = [["Date", "Time", "Stop", "Client", "Job #", "Served to", "Address",
+      "What happened", "Miles this leg", "Day total miles", "Day deduction", "Purpose"]];
+    days.slice().sort((a, b) => String(a.day).localeCompare(String(b.day))).forEach((m) => {
+      const trip = dayTrip(m.day);
+      const dayMiles = Number(m.miles || 0).toFixed(1);
+      const dayCash = Number(m.amount || 0).toFixed(2);
+      if (!trip.legs.length) {
+        rows.push([m.day, "", "", "", "", "", "(no stops recorded)", "", "", dayMiles, dayCash, "Process serving route"]);
+        return;
+      }
+      rows.push([m.day, "", "Start", "", "", "", "352 Pineland Ct, St. Cloud, FL 34769", "Left home", "", "", "", "Process serving"]);
+      trip.legs.forEach((s, i) => {
+        rows.push([m.day, clock(s.at), i + 1, s.job.client || "", s.job.job_no || "",
+          s.job.person || "", s.job.address || "", s.kind,
+          s.miles == null ? "" : s.miles.toFixed(1), "", "", "Serving legal process"]);
+      });
+      rows.push([m.day, "", "End", "", "", "", "352 Pineland Ct, St. Cloud, FL 34769", "Home again",
+        trip.home == null ? "" : trip.home.toFixed(1), dayMiles, dayCash, "Process serving"]);
+    });
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));

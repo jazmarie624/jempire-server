@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 53: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 54: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1406,3 +1406,21 @@ ol.tight li { margin-bottom: 0.15rem; }
   box-shadow: none;
 }
 .pin.vague span { font-weight: 800; }
+
+/* ---------- the stops behind one day's miles ---------- */
+.mrow.mtap { width: 100%; text-align: left; font: inherit; cursor: pointer; background: none; border: 0;
+  border-bottom: 1px solid #D7E0EC; }
+.mrow.mtap.open { background: #E3EAF4; border-radius: 8px 8px 0 0; }
+.trip { background: #F7F9FC; border: 1px solid #C3D0E2; border-radius: 0 0 10px 10px;
+  padding: 0.5rem 0.6rem; margin-bottom: 0.4rem; }
+.tleg { display: flex; gap: 0.55rem; align-items: baseline; padding: 0.35rem 0;
+  border-bottom: 1px solid #E4EAF2; font-variant-numeric: tabular-nums; }
+.tleg:last-child { border-bottom: 0; }
+.tleg > b { flex: 0 0 1.5rem; font-weight: 800; color: var(--navy); }
+.tleg-who { flex: 1; min-width: 0; font-weight: 700; font-size: 0.85rem; }
+.tleg-who em { display: block; font-style: normal; font-weight: 500; font-size: 0.82rem; }
+.tleg-who u { display: block; text-decoration: none; font-weight: 600; font-size: 0.72rem; color: var(--navy-2); }
+.tleg > i { font-style: normal; font-weight: 800; font-size: 0.85rem; flex: 0 0 auto; text-align: right; }
+.tleg.thome { color: var(--navy-2); }
+.tleg.ttot { border-top: 2px solid #A9BBD3; padding-top: 0.45rem; }
+.tleg.ttot > i { color: var(--green); font-size: 0.95rem; }
