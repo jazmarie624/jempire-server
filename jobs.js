@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 33: tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 34: “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 33 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 34 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -725,7 +725,10 @@
               <button class="btn ghost" id="rBest">Re-sort (save gas)</button>
               <button class="btn ghost" id="rLine">📋 Lineup</button>
               <button class="btn ghost" id="rPrint">Print</button>
+              <button class="btn ghost" id="rWhere">📍 Where am I</button>
+              <button class="btn ghost" id="rPins">Find missing pins</button>
             </div>
+            <p class="map-count" id="rMapCount"></p>
 
           </div>
           <div class="route-listcol">
@@ -742,6 +745,13 @@
     };
     byId("rStart").onclick = (e) => { const b = e.target.closest("[data-s]"); if (!b) return; RS.start = b.dataset.s; localStorage.setItem("jes_route_start", RS.start); byId("rStart").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); };
     byId("rBest").onclick = () => optimize();
+    byId("rPins").onclick = () => findMissingPins();
+    byId("rWhere").onclick = async () => {
+      J().toast("Finding you…");
+      const here = await getHere();
+      if (!here) { J().toast("Couldn't get your location — check Settings → Safari → Location"); return; }
+      RS.here = here; drawMap(); J().toast("You're on the map ✓");
+    };
     if (byId("rGo")) byId("rGo").onclick = startRoute;
     if (byId("rEnd")) byId("rEnd").onclick = endRoute;
     byId("rPrint").onclick = printRoute;
@@ -901,9 +911,47 @@
       pts.push([j.lat, j.lng]);
     });
     if (pts.length > 1) L.polyline(pts, { color: "#1F2A44", weight: 3, dashArray: "6 6" }).addTo(map);
-    if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+
+    // "You are here" — your own dot, so you can see the run from where you stand
+    const all = pts.slice();
+    if (RS.here) {
+      const youIcon = L.divIcon({ className: "pin you", html: `<span>YOU</span>`, iconSize: [40, 40], iconAnchor: [20, 20] });
+      L.marker([RS.here.lat, RS.here.lng], { icon: youIcon, zIndexOffset: 1000 })
+        .addTo(map).bindPopup("<b>You are here</b>");
+      all.push([RS.here.lat, RS.here.lng]);
+    }
+    if (all.length) map.fitBounds(all, { padding: [40, 40], maxZoom: 15 });
     else map.setView([HOME_FALLBACK.lat, HOME_FALLBACK.lng], 11);
     setTimeout(() => map.invalidateSize(), 200);
+
+    // Say plainly how many stops actually made it onto the map
+    const tag = byId("rMapCount");
+    if (tag) {
+      const off = RS.stops.length - pts.length;
+      tag.innerHTML = off
+        ? `<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map yet</b> — the address lookup couldn't place ${off === 1 ? "it" : "them"}. Tap <b>Find missing pins</b> to try again.`
+        : `All ${RS.stops.length} stops are on the map.`;
+    }
+  }
+
+  // Look up only the stops that still have no pin, and say what happened
+  async function findMissingPins() {
+    const missing = RS.stops.filter((j) => j.lat == null);
+    if (!missing.length) { J().toast("Every stop is already on the map"); return; }
+    let found = 0;
+    for (let i = 0; i < missing.length; i++) {
+      const tag = byId("rMapCount");
+      if (tag) tag.innerHTML = `Looking up ${i + 1} of ${missing.length}…`;
+      const pt = await geocode(missing[i].address);
+      if (pt) {
+        found++;
+        missing[i].lat = pt.lat; missing[i].lng = pt.lng; missing[i].geoApprox = pt.approx;
+        await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng });
+      } else missing[i].geoFail = true;
+      if (i < missing.length - 1) await sleep(1100);
+    }
+    drawMap(); drawStops();
+    J().toast(found ? `${found} more stop${found === 1 ? "" : "s"} on the map` : "Couldn't place those — check the addresses");
   }
 
   function drawStops() {
@@ -1141,7 +1189,7 @@
         <button class="today-btn" data-add="${j.id}">+ Add</button>
       </div>`).join("") : `<p class="muted small">No other active ${esc(RS.county)} jobs.</p>`;
     byId("rAddList").querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
-      if (await updateJob(b.dataset.add, { on_today: true, route_order: null })) { J().toast("Added — tap Best order to re-sort"); loadStops(); }
+      if (await updateJob(b.dataset.add, { on_today: true, route_order: null })) { J().toast("Added — tap Re-sort (save gas) to put it in order"); loadStops(); }
     });
   }
 

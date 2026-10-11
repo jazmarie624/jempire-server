@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 51: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 52: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1388,3 +1388,14 @@ ol.tight li { margin-bottom: 0.15rem; }
   padding: 0.15rem 0.55rem; font-size: 0.78rem; font-weight: 800;
   font-family: inherit; cursor: pointer;
 }
+
+/* ---------- "you are here" and the honest map count ---------- */
+.pin.you {
+  background: #2B5D8A; border: 3px solid #fff; color: #fff;
+  box-shadow: 0 0 0 3px rgba(43, 93, 138, .35), 0 2px 6px rgba(0, 0, 0, .3);
+}
+.pin.you span { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em; }
+.map-count {
+  margin: 0.4rem 0 0; font-size: 0.82rem; color: var(--navy-2); font-weight: 600;
+}
+.map-count .bad { color: var(--red); }
