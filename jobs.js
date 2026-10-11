@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 31: count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 32: road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 31 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 32 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -537,7 +537,7 @@
     county: localStorage.getItem("jes_route_county") || "Osceola",
     start: localStorage.getItem("jes_route_start") || "here",
     started: false, here: null, watchId: null, dismissed: new Set(),
-    map: null, stops: [], all: [],
+    map: null, stops: [], all: [], open: null,
     miles: Number(localStorage.getItem("jes_route_miles") || 0),
     lastPt: JSON.parse(localStorage.getItem("jes_route_lastpt") || "null")
   };
@@ -632,6 +632,38 @@
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(h));
   }
+  // Straight-line is always shorter than the road. In a suburban grid the road
+  // runs roughly a third further, so banking the crow-flies number under-claims
+  // the deduction every single day. Ordering still uses the raw number.
+  const ROAD = 1.3;
+  const roadMiles = (a, b) => miles(a, b) * ROAD;
+  // The server's date is UTC, so an 8pm serve would file under tomorrow.
+  // Evening routes are normal here, so the day comes off this device's clock.
+  function localDay(d) {
+    d = d || new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  // Write today's miles to the books now, not at the end of the day. The whole
+  // running total is written each time, so a reload can't double-count it.
+  async function bankMiles() {
+    if (!(RS.miles > 0.2)) return;
+    const day = localDay();
+    const done = RS.all.filter((j) => j.done_at && localDay(new Date(j.done_at)) === day).length;
+    try {
+      const rateRow = await J().db.from("jes_settings").select("value").eq("key", "mileage_rate").maybeSingle();
+      const rate = rateRow.data ? Number(rateRow.data.value) : 0.7;
+      const found = await J().db.from("jes_expenses").select("id,miles").eq("kind", "Miles").eq("day", day).maybeSingle();
+      // If the day was started on the other device, keep whichever total is larger
+      const total = Number(Math.max(RS.miles, Number((found.data && found.data.miles) || 0)).toFixed(1));
+      const row = {
+        kind: "Miles", day, miles: total, amount: Number((total * rate).toFixed(2)),
+        county: RS.county, stops: done, note: `Route — ${RS.county}, ${done} stop${done === 1 ? "" : "s"}`
+      };
+      if (found.data) await J().db.from("jes_expenses").update(row).eq("id", found.data.id);
+      else await J().db.from("jes_expenses").insert(row);
+    } catch (e) { /* miles are never worth losing a serve over */ }
+  }
   // nearest-next from the start, then a quick clean-up pass to remove zig-zags
   function bestOrder(start, pts) {
     const left = pts.slice(), out = [];
@@ -722,18 +754,11 @@
   async function endRoute() {
     if (!confirm("End today's route? Stops you haven't done stay on today's list.")) return;
 
-    // Add the drive home, bank the day's miles, then clear the counter
-    let total = RS.miles;
-    if (RS.lastPt) { const home = await homePoint(); if (home) total += miles(RS.lastPt, home); }
-    const done = RS.all.filter((j) => j.done_at && String(j.done_at).slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
-    if (total > 0.5) {
-      const rateRow = await J().db.from("jes_settings").select("value").eq("key", "mileage_rate").maybeSingle();
-      const rate = rateRow.data ? Number(rateRow.data.value) : 0.7;
-      await J().db.from("jes_expenses").insert({
-        kind: "Miles", miles: Number(total.toFixed(1)), amount: Number((total * rate).toFixed(2)),
-        county: RS.county, stops: done, note: `Route — ${RS.county}, ${done} stop${done === 1 ? "" : "s"}`
-      });
-      J().toast(`${total.toFixed(1)} miles banked · ${J().money(total * rate)} off your taxes`);
+    // The stops were banked as they happened. All that's left is the drive home.
+    if (RS.lastPt) { const home = await homePoint(); if (home) RS.miles += roadMiles(RS.lastPt, home); }
+    if (RS.miles > 0.2) {
+      await bankMiles();
+      J().toast(`${RS.miles.toFixed(1)} miles banked for today · tax deduction saved`);
     }
     RS.miles = 0; RS.lastPt = null;
     localStorage.removeItem("jes_route_miles");
@@ -806,13 +831,14 @@
     if (waitingToday) msgs.push(`${waitingToday} job${waitingToday > 1 ? "s are" : " is"} still waiting on papers from Jean, so ${waitingToday > 1 ? "they're" : "it's"} left off the route.`);
     if (otherCounty) msgs.push(`${otherCounty} of today's jobs ${otherCounty > 1 ? "are" : "is"} in the other county and not shown here.`);
     byId("rMsg").innerHTML = msgs.map((m) => `<div class="alert soft">${J().esc(m)}</div>`).join("");
+    await numberPapers(false);     // anything added since keeps a number of its own
     drawZipLedger();
 
     // A rush can come from anybody, Jean included. Say where it sits in the run.
-    const rushes = RS.stops.map((j, i) => ({ j, n: i + 1 })).filter(({ j }) => j.service === "Rush");
+    const rushes = RS.stops.map((j, i) => ({ j, n: stopNo(j, i) })).filter(({ j }) => j.service === "Rush");
     if (rushes.length) {
       const lines = rushes.map(({ j, n }) => `<span class="rush-line"><b>${J().esc(j.person || (j.address || "").split(",")[0] || "a stop")}</b>
-        is <b>stop ${n} of ${RS.stops.length}</b> — ${J().esc(j.address || "no address")}
+        is <b>paper #${n}</b> — ${J().esc(j.address || "no address")}
         ${n > 1 ? `<button class="rush-jump" data-rushtop="${j.id}">Move it to stop 1</button>` : `<em>already first</em>`}</span>`).join("");
       byId("rMsg").insertAdjacentHTML("afterbegin",
         `<div class="alert rush-warn"><b>⚡ ${rushes.length} rush ${rushes.length > 1 ? "jobs" : "job"} today</b>${lines}</div>`);
@@ -822,7 +848,7 @@
     // The gas order stands, but if a last-chance job sits late in the run and
     // you don't finish, that's the one you lose. Say so.
     const risky = RS.stops
-      .map((j, i) => ({ j, n: i + 1 }))
+      .map((j, i) => ({ j, n: stopNo(j, i) }))
       .filter(({ j, n }) => { const d = daysLeft(j); return d != null && d <= 0 && n > Math.ceil(RS.stops.length / 2); });
     if (risky.length) {
       const names = risky.map(({ j, n }) => `#${n} ${J().esc(j.person || "a stop")}`).join(", ");
@@ -862,8 +888,8 @@
       const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
       const n = (seen[key] = (seen[key] || 0) + 1);
       if (n > 1) { const a = (n - 1) * 1.1; j = Object.assign({}, j, { lat: j.lat + 0.00035 * Math.cos(a), lng: j.lng + 0.00035 * Math.sin(a) }); }
-      const icon = L.divIcon({ className: "pin", html: `<span>${i + 1}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] });
-      L.marker([j.lat, j.lng], { icon }).addTo(map).bindPopup(`<b>${i + 1}. ${J().esc(j.person || "")}</b><br>${J().esc(j.address)}`);
+      const icon = L.divIcon({ className: "pin", html: `<span>${stopNo(j, i)}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] });
+      L.marker([j.lat, j.lng], { icon }).addTo(map).bindPopup(`<b>${stopNo(j, i)}. ${J().esc(j.person || "")}</b><br>${J().esc(j.address)}`);
       pts.push([j.lat, j.lng]);
     });
     if (pts.length > 1) L.polyline(pts, { color: "#1F2A44", weight: 3, dashArray: "6 6" }).addTo(map);
@@ -879,25 +905,31 @@
       box.innerHTML = `<div class="card center"><b>No stops for ${esc(RS.county)} today.</b><p class="muted">Tap "+ Today" on jobs in the Jobs tab, or use "Add more stops" below.</p></div>`;
       return;
     }
+    // Whichever stop is open shows the Served buttons. It's the next one up by
+    // default, but tapping any card opens it — for when you cut the line.
+    if (RS.open && !RS.stops.some((s) => s.id === RS.open)) RS.open = null;
     box.innerHTML = RS.stops.map((j, i) => {
-      const first = i === 0;
+      const first = RS.open ? j.id === RS.open : i === 0;
+      const no = stopNo(j, i);
+      const moved = no !== i + 1;
       return `
       <div class="stop ${first ? "current" : ""} ${dueClass(j)}">
-        <div class="stop-top">
-          <span class="stop-num">${i + 1}</span>
+        <div class="stop-top ${first ? "" : "tap-open"}" ${first ? "" : `data-open-stop="${j.id}"`} ${first ? "" : 'role="button" tabindex="0"'}>
+          <span class="stop-num">${no}</span>
           <div class="draft-text">
             <div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""} ${j.service === "Rush" ? `<span class="rush">Rush</span>` : ""}</div>
             <div class="draft-addr">${esc(j.address)}</div>
-            ${first ? `<div class="next-label">${RS.started ? "NEXT STOP" : "FIRST STOP"} · ${i + 1} of ${RS.stops.length}</div>` : ""}
+            ${first ? `<div class="next-label">${RS.open && i !== 0 ? "OPEN NOW" : RS.started ? "NEXT STOP" : "FIRST STOP"} · paper #${no}${moved ? ` · ${i + 1}${i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"} in the drive` : ` of ${RS.stops.length}`}</div>`
+              : `<div class="tap-hint">Tap to open this one</div>`}
             ${flagChips(j) ? `<div class="chip-row">${flagChips(j)}</div>` : ""}
             ${j.is_business && !businessHoursNow() ? `<div class="biz-warn">🏢 Registered agent hours are 10–12 and 2–4 — it's outside those hours now</div>` : ""}
             ${j.is_foreclosure && (j.packets || 1) > 1 ? `<div class="pk-warn">📚 TAKE ${j.packets} PACKETS to this door — all ${j.packets} get served here · ${J().money(j.price || 0)}</div>` : ""}
             <div class="draft-later">${esc(j.client || "")} · Attempt ${(j.attempt_count || 0) + 1} of 5${j.lat == null ? ` · <b class="bad">📍 No map pin — check address</b>` : j.geoApprox ? ` · <b class="bad">Pin is approximate</b>` : ""}</div>
           </div>
           <div class="move">
-            <button class="icon-btn top-btn" data-top="${i}" aria-label="Make stop ${i + 1} the next one" ${i === 0 ? "disabled" : ""}>⇧ 1st</button>
-            <button class="icon-btn" data-up="${i}" aria-label="Move stop ${i + 1} up" ${i === 0 ? "disabled" : ""}>▲</button>
-            <button class="icon-btn" data-down="${i}" aria-label="Move stop ${i + 1} down" ${i === RS.stops.length - 1 ? "disabled" : ""}>▼</button>
+            <button class="icon-btn top-btn" data-top="${i}" aria-label="Drive to paper #${no} next" ${i === 0 ? "disabled" : ""}>⇧ 1st</button>
+            <button class="icon-btn" data-up="${i}" aria-label="Move paper #${no} up the drive" ${i === 0 ? "disabled" : ""}>▲</button>
+            <button class="icon-btn" data-down="${i}" aria-label="Move paper #${no} down the drive" ${i === RS.stops.length - 1 ? "disabled" : ""}>▼</button>
           </div>
         </div>
         ${first ? `
@@ -920,6 +952,11 @@
         </div>`}
       </div>`;
     }).join("");
+    box.querySelectorAll("[data-open-stop]").forEach((el) => {
+      const open = () => { RS.open = el.dataset.openStop; drawStops(); };
+      el.onclick = (e) => { if (e.target.closest(".move")) return; open(); };
+      el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+    });
     box.querySelectorAll("[data-top]").forEach((b) => b.onclick = () => toTop(RS.stops[Number(b.dataset.top)] && RS.stops[Number(b.dataset.top)].id));
     box.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => move(Number(b.dataset.up), -1));
     box.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => move(Number(b.dataset.down), 1));
@@ -930,6 +967,28 @@
   async function saveOrder() {
     await Promise.all(RS.stops.map((j, i) => (j.route_order = i, updateJob(j.id, { route_order: i }))));
   }
+
+  // ---------- the number you write on the papers ----------
+  // Serving a stop used to shuffle every number below it, so by mid-afternoon
+  // the stack in the car no longer matched the screen. The number is set once,
+  // when you build the route, and left alone until you renumber on purpose.
+  const stopNo = (j, i) => j.lineup_no || i + 1;
+  function nextFreeNo() {
+    const used = RS.stops.map((j) => j.lineup_no).filter((n) => n != null);
+    return (used.length ? Math.max.apply(null, used) : 0) + 1;
+  }
+  // all = true renumbers the whole run 1..n (a fresh set of sticky notes).
+  // all = false only numbers stops that don't have one yet.
+  async function numberPapers(all) {
+    const jobs = [];
+    RS.stops.forEach((j, i) => {
+      if (!all && j.lineup_no) return;
+      j.lineup_no = all ? i + 1 : nextFreeNo();
+      jobs.push(updateJob(j.id, { lineup_no: j.lineup_no }));
+    });
+    if (jobs.length) await Promise.all(jobs);
+  }
+
   async function move(i, dir) {
     const k = i + dir;
     [RS.stops[i], RS.stops[k]] = [RS.stops[k], RS.stops[i]];
@@ -942,9 +1001,11 @@
     const start = await homePoint();
     const ordered = bestOrder(start, withPts);
     RS.stops = ordered.concat(RS.stops.filter((j) => j.lat == null));
-    drawStops(); drawMap(); await saveOrder();
-    const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + miles(i ? arr[i - 1] : start, p), 0);
-    if (!quiet) J().toast(`Order set from ${RS.start === "here" && RS.here ? "where you are" : "home"} · about ${total.toFixed(1)} miles (straight-line)`);
+    await saveOrder();
+    await numberPapers(true);      // fresh run = a fresh set of sticky notes
+    drawStops(); drawMap();
+    const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + roadMiles(i ? arr[i - 1] : start, p), 0);
+    if (!quiet) J().toast(`Order set · 1 to ${RS.stops.length} on your papers · about ${total.toFixed(1)} miles of driving`);
   }
 
   // Why a non-serve happened — one tap, because you'll have forgotten by tonight
@@ -997,13 +1058,15 @@
 
     if (!(await updateJob(j.id, patch))) return;
 
-    // Bank the miles as you go — this is a tax deduction you were losing
+    // Bank the miles as you go — saved to the books at every stop, so closing
+    // the app or forgetting to tap End route can't lose the day.
     if (j.lat != null) {
       const from = RS.lastPt || await homePoint();
-      if (from) RS.miles += miles(from, j);
+      if (from) RS.miles += roadMiles(from, j);
       RS.lastPt = { lat: j.lat, lng: j.lng };
       localStorage.setItem("jes_route_miles", String(RS.miles));
       localStorage.setItem("jes_route_lastpt", JSON.stringify(RS.lastPt));
+      await bankMiles();
     }
 
     await logAttempt(j, kind === "Attempt" ? "Attempt" : kind === "Served" ? "Served" : "Non-Serve", note);
@@ -1100,8 +1163,8 @@
     };
     const rows = () => RS.stops.map((j, i) => `
       <div class="lu-row ${done.has(j.id) ? "on" : ""} ${dueClass(j)}" data-lu="${j.id}" role="button" tabindex="0"
-           aria-label="Stop ${i + 1}, ${esc(j.person || "no name")}">
-        <div class="lu-num">${i + 1}</div>
+           aria-label="Paper number ${stopNo(j, i)}, ${esc(j.person || "no name")}">
+        <div class="lu-num">${stopNo(j, i)}</div>
         <div class="lu-text">
           <div class="lu-name">${esc(j.person || "(no name)")}</div>
           <div class="lu-sub">${esc(j.address || "")}</div>
@@ -1145,7 +1208,7 @@
       <table class="lu-print">
         <thead><tr><th class="lup-n">#</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">CLIENT · JOB #</th><th class="lup-x">✓</th></tr></thead>
         <tbody>${RS.stops.map((j, i) => `<tr>
-          <td class="lup-n">${i + 1}</td>
+          <td class="lup-n">${stopNo(j, i)}</td>
           <td><b>${esc(j.person || "(no name)")}</b></td>
           <td>${esc(j.address || "")}</td>
           <td class="lup-c">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</td>

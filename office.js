@@ -1,12 +1,12 @@
-// J EMPIRE SERVER — office.js (version 26: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 27: miles day by day, with a spreadsheet: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 26 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 27 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
-  const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7 };
+  const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7, showMiles: false };
 
   const todayISO = () => new Date().toISOString().slice(0, 10);
   const num = (v) => (v == null || v === "" ? null : Number(v));
@@ -431,8 +431,13 @@
           <div class="off-sums">
             <div class="sum red"><span>Waiting on payment</span><b>${money(owed)}</b></div>
             <div class="sum green"><span>This week · goal ${money(O.goal)}</span><b>${money(earned)}</b></div>
-            <div class="sum"><span>Miles banked this year</span><b>${milesTotal.toFixed(0)} mi · ${money(milesMoney)}</b></div>
+            <button class="sum sum-tap" id="mMiles">
+              <span>Miles banked this year${thisYear.length ? ` · ${thisYear.length} day${thisYear.length === 1 ? "" : "s"}` : ""}</span>
+              <b>${milesTotal.toFixed(0)} mi · ${money(milesMoney)}</b>
+              <em>${O.showMiles ? "Hide the days ▲" : "Tap for day by day ▼"}</em>
+            </button>
           </div>
+          ${O.showMiles ? milesPanel(thisYear, milesTotal, milesMoney) : ""}
         </div>
         ${companies.length ? `<div class="pay-grid">${panels}</div>`
           : `<div class="card soft center pad"><p>No closed sheets yet.</p><p class="muted small">Close a sheet in Sheets and it shows up here.</p></div>`}
@@ -446,6 +451,47 @@
     document.querySelectorAll("[data-sheet]").forEach((b) => b.onclick = () => openTracker(b.getAttribute("data-sheet")));
     byId("mRates").onclick = drawRates;
     byId("mExport").onclick = exportAll;
+    byId("mMiles").onclick = () => { O.showMiles = !O.showMiles; drawMoney(opts); };
+    const mx = byId("mMilesCsv");
+    if (mx) mx.onclick = () => milesCsv(thisYear);
+  }
+
+  // ---------- every day you drove, newest first ----------
+  function milesPanel(days, total, cash) {
+    const { esc, money } = J();
+    if (!days.length) {
+      return `<div class="miles-panel"><p class="muted center pad">No driving banked yet this year.
+        Build a route, mark your stops, and each day lands here on its own line.</p></div>`;
+    }
+    const rows = days.slice().sort((a, b) => String(b.day).localeCompare(String(a.day)))
+      .map((m) => `<div class="mrow">
+        <b>${esc(fmtDay(m.day))}</b>
+        <span>${esc(m.county || "")}${m.stops ? ` · ${m.stops} stop${m.stops === 1 ? "" : "s"}` : ""}</span>
+        <u>${Number(m.miles || 0).toFixed(1)} mi</u>
+        <i>${money(m.amount || 0)}</i>
+      </div>`).join("");
+    return `<div class="miles-panel">
+      <div class="mrow mhead"><b>Day</b><span>Where</span><u>Miles</u><i>Deduction</i></div>
+      ${rows}
+      <div class="mrow mtot"><b>${days.length} day${days.length === 1 ? "" : "s"}</b><span></span>
+        <u>${total.toFixed(1)} mi</u><i>${money(cash)}</i></div>
+      <button class="btn ghost" id="mMilesCsv">Download the spreadsheet</button>
+      <p class="muted small">Opens in Excel or Numbers. Road distance is worked out from your stops,
+        so it's a careful estimate — your odometer is the final word.</p>
+    </div>`;
+  }
+
+  function milesCsv(days) {
+    const rows = [["Date", "County", "Stops", "Miles", "Deduction", "Note"]].concat(
+      days.slice().sort((a, b) => String(a.day).localeCompare(String(b.day)))
+        .map((m) => [m.day, m.county || "", m.stops || "", Number(m.miles || 0).toFixed(1),
+          Number(m.amount || 0).toFixed(2), m.note || "Process serving route"]));
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = `J-Empire-mileage-${new Date().getFullYear()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    J().toast("Spreadsheet downloaded");
   }
 
   // ---------- one closed sheet, job by job ----------
