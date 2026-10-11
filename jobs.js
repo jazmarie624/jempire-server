@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 35: stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 36: paper check — work the stack at the car, grouped by ZIP —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 35 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 36 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -83,6 +83,7 @@
           <div class="seg view-seg" id="jView">${[["working", "Working"], ["history", "History"]].map(([v, t]) => `<button class="${v === JS.view ? "on" : ""}" data-v="${v}">${t}</button>`).join("")}</div>
           <label class="sr" for="jq">Search jobs</label>
           <input id="jq" class="search" type="search" placeholder="Search name, job #, address" value="${esc(JS.q)}">
+          <button class="btn ghost thin" id="jPaper">📋 Paper check</button>
           <div class="seg" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="${c === JS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
         <div id="jTally"></div>
@@ -93,6 +94,7 @@
       <div class="sheet-back" id="sheetBack" hidden></div>`;
     byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
     byId("jq").oninput = (e) => { JS.q = e.target.value; drawList(); };
+    byId("jPaper").onclick = () => drawPaperCheck();
     byId("jDense").onclick = (e) => {
       const b = e.target.closest("[data-d]"); if (!b) return;
       JS.dense = b.dataset.d === "list";
@@ -1277,6 +1279,78 @@
       });
       byId("luClose").onclick = () => { back.hidden = true; back.innerHTML = ""; };
       byId("luPrint").onclick = () => { back.hidden = true; back.innerHTML = ""; printLineup(); };
+    };
+    paint();
+  }
+
+  // ---------- paper check: stand at the car and work the stack ----------
+  // Grouped by ZIP because that's how Gene hands them over. Ticking a row means
+  // the paper is in your hand. Whatever's left unticked at the end is a job you
+  // have no paper for — and anything in your hand with no row never got added.
+  function drawPaperCheck() {
+    const { esc } = J();
+    const back = byId("sheetBack") || document.body.appendChild(
+      Object.assign(document.createElement("div"), { id: "sheetBack", className: "sheet-back" }));
+    back.hidden = false;
+    const zipOfJob = (j) => ((j.address || "").match(/\b(\d{5})(?:-\d{4})?\b/) || [])[1] || "No ZIP";
+
+    const paint = () => {
+      const live = JS.jobs.filter((j) => j.status === "Active" && !isDone(j))
+        .sort((a, b) => zipOfJob(a).localeCompare(zipOfJob(b))
+          || (a.client || "").localeCompare(b.client || ""));
+      const got = live.filter((j) => j.has_papers !== false).length;
+      let lastZip = "";
+      const rows = live.map((j) => {
+        const z = zipOfJob(j);
+        const head = z !== lastZip
+          ? `<div class="pc-zip">${esc(z)}<span>${live.filter((x) => zipOfJob(x) === z).length} job${live.filter((x) => zipOfJob(x) === z).length === 1 ? "" : "s"}</span></div>` : "";
+        lastZip = z;
+        const have = j.has_papers !== false;
+        const jean = PAPER_CLIENTS.includes(j.client);
+        return head + `<div class="pc-row ${have ? "on" : ""}" data-pc="${j.id}" role="button" tabindex="0"
+             aria-label="${have ? "In hand" : "Not in hand"}: ${esc(j.person || j.address || "job")}">
+          <div class="pc-tick">${have ? "✓" : ""}</div>
+          <div class="pc-text">
+            <div class="pc-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+            <div class="pc-addr">${esc(j.address || "no address")}</div>
+            <div class="pc-sub">${esc(j.client || "")} · ${jean ? "Jean hands this over" : "you print this one"}</div>
+          </div>
+        </div>`;
+      }).join("");
+      const missing = live.length - got;
+      back.innerHTML = `<div class="sheet papercheck" role="dialog" aria-modal="true" aria-labelledby="pcT">
+        <div class="lu-head">
+          <h2 id="pcT">Paper check</h2>
+          <span class="lu-count ${missing ? "" : "all"}">${got} of ${live.length} in hand</span>
+        </div>
+        <p class="muted small">Work your stack. Tap a row when you find its papers.
+          ${missing ? `<b>${missing} still unticked — those are jobs you have no paper for.</b>` : `Every job has its papers ✓`}</p>
+        <div class="lu-list">${rows || `<p class="muted center">No active jobs.</p>`}</div>
+        <div class="sheet-btns">
+          <button class="btn ghost" id="pcNone">Untick everything</button>
+          <button class="btn go" id="pcClose">Done</button>
+        </div>
+      </div>`;
+      back.querySelectorAll("[data-pc]").forEach((row) => row.onclick = async () => {
+        const j = JS.jobs.find((x) => x.id === row.dataset.pc);
+        const have = j.has_papers !== false;
+        const patch = { has_papers: !have };
+        if (have) patch.on_today = false;           // no papers means off the route
+        if (await updateJob(j.id, patch)) { Object.assign(j, patch); paint(); }
+      });
+      byId("pcNone").onclick = async () => {
+        if (!confirm("Untick every job? You'd start the stack from scratch.")) return;
+        for (const j of live) if (j.has_papers !== false) {
+          await updateJob(j.id, { has_papers: false, on_today: false });
+          j.has_papers = false; j.on_today = false;
+        }
+        paint();
+      };
+      byId("pcClose").onclick = () => {
+        back.hidden = true; back.innerHTML = "";
+        J().refreshBadges && J().refreshBadges();
+        drawJobs();
+      };
     };
     paint();
   }
