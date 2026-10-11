@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 49: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 50: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1356,3 +1356,19 @@ ol.tight li { margin-bottom: 0.15rem; }
 .stop-top.tap-open { cursor: pointer; }
 .tap-hint { font-size: 0.74rem; font-weight: 700; color: var(--gold-text); margin-top: 0.15rem; }
 .stop-top.tap-open:active { background: #F0F4F9; border-radius: 10px; }
+
+/* =====================================================================
+   Six-column fix: the name was fighting the flags and the job number for
+   one line and losing, so "Affordable Landscape…" came out as "A…".
+   Flags and job number share the top line; the name gets its own.
+   ===================================================================== */
+@media (min-width: 900px) {
+  .job-cols.six .jl-row1 { flex-wrap: wrap; row-gap: 0.1rem; }
+  .job-cols.six .jl-row1 .m { order: 1; }
+  .job-cols.six .jobno { order: 2; font-size: 0.7rem; }
+  .job-cols.six .jl-name {
+    order: 3; flex: 1 0 100%; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 0.86rem; line-height: 1.25;
+  }
+}
