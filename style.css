@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 56: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 57: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1462,3 +1462,10 @@ ol.tight li { margin-bottom: 0.15rem; }
 .pc-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
 .pc-chip.jean { border-color: var(--gold); color: var(--gold-text); }
 .pc-chip.jean.on { background: var(--gold); border-color: var(--gold); color: #1F2A44; }
+
+/* ---------- two people, one door ---------- */
+.door-note {
+  background: #EFE8F7; border: 2px solid #5B3E8E; color: #40296B;
+  border-radius: 9px; padding: 0.4rem 0.6rem; margin-top: 0.35rem;
+  font-size: 0.82rem; font-weight: 700; line-height: 1.35;
+}

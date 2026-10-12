@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 32: Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 33: two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 32 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 33 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -884,20 +884,32 @@
     const { esc } = J();
     const box = document.getElementById("inDrafts");
     drawPapersSwitch();
-    // Same address twice inside this one paste — flag the second one
+    // Same address twice inside this one paste — flag the second one.
+    // BUT two people at one door, each with their own job number, is two real
+    // serves and two payments. Only a matching (or missing) job number on the
+    // same address is an actual duplicate.
     const firstAt = new Map();
     S.drafts.forEach((d, i) => {
-      const k = addrKey(d.address);
-      if (k && !firstAt.has(k)) firstAt.set(k, i);
+      const k = addrKey(d.address) + "|" + String(d.job_no || "").trim();
+      if (k.length > 1 && !firstAt.has(k)) firstAt.set(k, i);
     });
     const twinOf = (d, i) => {
+      if (!addrKey(d.address)) return -1;
+      const k = addrKey(d.address) + "|" + String(d.job_no || "").trim();
+      return firstAt.has(k) && firstAt.get(k) !== i ? firstAt.get(k) : -1;
+    };
+    // Two different job numbers sharing a door — not a duplicate, but worth
+    // saying so you take both sets of papers with you.
+    const sameDoor = (d, i) => {
       const k = addrKey(d.address);
-      return k && firstAt.has(k) && firstAt.get(k) !== i ? firstAt.get(k) : -1;
+      if (!k) return 0;
+      return S.drafts.filter((x, n) => n !== i && addrKey(x.address) === k
+        && String(x.job_no || "") !== String(d.job_no || "")).length;
     };
     const withP = S.drafts.map((d, i) => {
       const twin = twinOf(d, i);
       const dup = twin >= 0 ? "Same address as job " + (twin + 1) + " in this paste" : duplicateOf(d, S.existing);
-      return { d, i, dup, twin, p: dup ? [dup] : problems(d) };
+      return { d, i, dup, twin, door: sameDoor(d, i), p: dup ? [dup] : problems(d) };
     });
     // grouped by ZIP below, so no problems-first sort here
     const dups = withP.filter((x) => x.dup).length;
@@ -910,7 +922,7 @@
       ? `<span>${S.drafts.length} job${S.drafts.length > 1 ? "s" : ""} found</span><span><b class="ok">${ready} ready to route</b>${red ? ` · <b class="bad">${red} need an address</b>` : ""}${dups ? ` · <b class="bad">${dups} duplicate${dups > 1 ? "s" : ""}</b>` : ""}</span>`
       : `<span class="muted">Pick the client, paste their jobs, and tap Build Jobs.</span>`;
 
-    const card = ({ d, i, p }) => `
+    const card = ({ d, i, p, door }) => `
       <div class="draft dcard2 ${p.length ? "is-red" : "is-green"}">
         <div class="d2-top">
           <span class="dot" aria-hidden="true"></span>
@@ -922,6 +934,7 @@
           <button class="icon-btn drop" data-drop="${i}" aria-label="Remove ${esc(d.person || d.address || "this job")}">✕</button>
         </div>
         <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
+        ${door ? `<div class="door-note">👥 ${door + 1} people get served at this door — ${door + 1} job numbers, ${door + 1} payments. Take all ${door + 1} sets of papers.</div>` : ""}
         ${addressCount(d.address) > 1 ? `<button class="btn split-btn" data-split="${i}">✂️ Split into ${addressCount(d.address)} jobs</button>` : ""}
         <div class="flag-row">
           <button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "NO PAPERS YET"}</button>
