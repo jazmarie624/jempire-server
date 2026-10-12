@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 35: two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 36: an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 35 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 36 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -503,7 +503,6 @@
     const isNoise = (l) =>
       /^(assigned|unassigned|accepted|serve|in progress|primary|related|open|new|view|details|picked up|pending|on hold)$/i.test(l) ||
       /^\d+\s+unread\s+chat/i.test(l) ||
-      /^due\s+in\b/i.test(l) ||
       /^(hide|show)\s+\d+\s+jobs?\s+at\s+this\s+address/i.test(l) ||
       /^\d+(\.\d+)?\s*mi\s+away/i.test(l) ||
       /^[•*\-\s]*$/.test(l);
@@ -531,6 +530,16 @@
           if (due && !d.due_date) d.due_date = due;
           return;
         }
+        // "Due in 7d 2h" is Proof's real deadline and it used to be thrown away
+        // as noise, which is why due dates never came through. Keep whichever
+        // deadline lands first — that's the one that bites.
+        if (/^due\s+(in|by)\b/i.test(l)) {
+          const due = dueFromText(l);
+          if (due && (!d.due_date || due < d.due_date)) d.due_date = due;
+          d.notes = (d.notes ? d.notes + "\n" : "") + l;
+          nameDone = true;
+          return;
+        }
         // These have to be checked BEFORE the address, because "2 Day Post"
         // looks exactly like a house number followed by a street name.
         if (/^\d+\s*day\s*post/i.test(l)) { post = l; d.job_type = titleCase(l); nameDone = true; return; }
@@ -552,9 +561,14 @@
         // in "Primary • 1/4 attempts • #2138760"
         const am = l.match(/(\d+)\s*\/\s*(\d+)\s*attempts?/i);
         if (am) d.attempt_count = Number(am[1]);
-        const jm = l.match(/#\s*([0-9][0-9\/]{3,})/) || l.match(/^([0-9][0-9\/]{4,})$/);
+        // An apartment number uses a # too — "1317 EDGEWATER DR, # 4105, ORLANDO,
+        // FL 32804". That whole line was being swallowed as a job number, which
+        // left the job with no address AND the wrong number on it.
+        const looksLikeAddress = STREET_START.test(l) || hasZip(l);
+        const jm = looksLikeAddress ? null
+          : (l.match(/#\s*([0-9][0-9\/]{3,})/) || l.match(/^([0-9][0-9\/]{4,})$/));
         if (jm) { if (!d.job_no) d.job_no = jm[1].replace(/\/$/, ""); nameDone = true; return; }
-        if (am) { nameDone = true; return; }
+        if (am && !looksLikeAddress) { nameDone = true; return; }
 
         // county comes free on the "10.1 mi away • Osceola County" line
         const cm = l.match(/mi\s+away\s*[•·|]\s*([A-Za-z]+)\s+County/i);
