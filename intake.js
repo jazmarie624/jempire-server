@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 33: two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 35: two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 33 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 35 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -582,15 +582,8 @@
         d.person = titleCase(nameParts.join(" ").replace(/\s+/g, " ").trim());
         if (BIZ.test(d.person)) d.is_business = true;
       }
-      const extras = [];
-      if (post) extras.push(titleCase(post) + " — posting, not a personal serve");
-      if (stacked > 1) extras.push(`${stacked} jobs at this address — check for a second one in Proof.`);
-      if (extras.length) d.notes = (d.notes ? d.notes + "\n" : "") + extras.join("\n");
-      if (d.county) d.county = titleCase(d.county);
-
-      // "Hide 2 jobs at this address" means two people get served at one door,
-      // each with its own job number and its own pay. They used to collapse
-      // into a single job and the second person was simply lost.
+      // "Hide 2 jobs at this address" means more than one person gets served at
+      // this door. Each has their own job number; the pay shown covers them all.
       const roster = [];
       bl.forEach((line, i) => {
         const m = line.match(/^(primary|related|additional)\s*[•·|]\s*(\d+)\s*\/\s*\d+\s*attempts?\s*[•·|]\s*#?\s*(\d{3,})/i);
@@ -606,18 +599,32 @@
         roster.push({ person: who, job_no: m[3], attempt_count: Number(m[2]) });
       });
 
+      const extras = [];
+      if (post) extras.push(titleCase(post) + " — posting, not a personal serve");
+      if (stacked > 1 && roster.length < 2) extras.push(`${stacked} jobs at this address — check Proof for the second one.`);
+      if (extras.length) d.notes = (d.notes ? d.notes + "\n" : "") + extras.join("\n");
+      if (d.county) d.county = titleCase(d.county);
+
+      // Two or more people at one door is ONE trip and ONE payment — Proof's
+      // "max pay" is the total for the whole door, not per person. So it stays
+      // one job: both names on it, every job number written down, and the price
+      // exactly as Proof gave it. One stop on the route, one line on the sheet,
+      // nothing to work out by hand.
       if (roster.length > 1) {
-        return roster.map((r, n) => {
-          const copy = Object.assign(blankDraft("Proof"), d, {
-            person: titleCase(r.person || d.person || ""),
-            job_no: r.job_no,
-            attempt_count: r.attempt_count
-          });
-          copy.is_business = BIZ.test(copy.person || "");
-          copy.notes = (d.notes ? d.notes + "\n" : "") +
-            `${roster.length} people served at this door — this is ${n + 1} of ${roster.length}.`;
-          return copy;
-        });
+        const names = roster.map((r) => titleCase(r.person)).filter(Boolean);
+        if (names.length) d.person = names.join(" + ");
+        d.job_no = roster[0].job_no || d.job_no;
+        d.attempt_count = Math.max.apply(null, roster.map((r) => r.attempt_count || 0));
+        d.is_business = BIZ.test(d.person || "");
+        d.people = roster.length;
+        d.extra_nos = roster.slice(1).map((r) => r.job_no).join(", ");
+        const who = roster.map((r) => `#${r.job_no} ${titleCase(r.person) || "(no name)"}`).join(" · ");
+        const lines = (d.notes ? d.notes.split("\n") : []).concat([
+          `${roster.length} people served at this door — take all ${roster.length} sets of papers.`,
+          who,
+          d.price != null ? `$${Number(d.price).toFixed(2)} is Proof's total for the whole door, not per person.` : ""
+        ]);
+        d.notes = lines.filter((l, i, a) => l && l.trim() && a.indexOf(l) === i).join("\n");
       }
       return [d];
     }).reduce((a, b) => a.concat(b), []).filter((d) => d.person || d.address || d.job_no);
@@ -934,7 +941,8 @@
           <button class="icon-btn drop" data-drop="${i}" aria-label="Remove ${esc(d.person || d.address || "this job")}">✕</button>
         </div>
         <div class="draft-addr">${p.length ? `<b>${esc(p.join(" · "))}</b>${d.address ? " · " : ""}` : ""}${esc(d.address || "")}${d.county && !p.length ? ` · ${esc(d.county)}` : ""}</div>
-        ${door ? `<div class="door-note">👥 ${door + 1} people get served at this door — ${door + 1} job numbers, ${door + 1} payments. Take all ${door + 1} sets of papers.</div>` : ""}
+        ${d.people > 1 ? `<div class="door-note">👥 ${d.people} people served at this door — one stop, one payment of ${J().money(d.price || 0)}. Take all ${d.people} sets of papers.${d.extra_nos ? `<br>Also job #${esc(d.extra_nos)}` : ""}</div>`
+          : door ? `<div class="door-note">👥 ${door + 1} jobs at this address — ${door + 1} job numbers, ${door + 1} payments. Take all ${door + 1} sets of papers.</div>` : ""}
         ${addressCount(d.address) > 1 ? `<button class="btn split-btn" data-split="${i}">✂️ Split into ${addressCount(d.address)} jobs</button>` : ""}
         <div class="flag-row">
           <button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "NO PAPERS YET"}</button>
