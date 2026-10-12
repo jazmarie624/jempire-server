@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 31: a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 32: Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 31 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 32 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -477,6 +477,19 @@
     }
     if (/tomorrow/.test(t)) return new Date(Date.now() + 864e5).toISOString().slice(0, 10);
     if (/today|tonight/.test(t)) return new Date().toISOString().slice(0, 10);
+    // "by 8AM, 10/20" — a plain month/day. No year, so take this year unless
+    // that's already well past, in which case they mean next year.
+    const md = t.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\b/);
+    if (md) {
+      const mo = Number(md[1]), day = Number(md[2]);
+      if (mo >= 1 && mo <= 12 && day >= 1 && day <= 31) {
+        let yr = md[3] ? Number(md[3]) : new Date().getFullYear();
+        if (yr < 100) yr += 2000;
+        let dt = new Date(yr, mo - 1, day, 12);
+        if (!md[3] && dt.getTime() < Date.now() - 45 * 864e5) dt = new Date(yr + 1, mo - 1, day, 12);
+        return `${dt.getFullYear()}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
     return "";
   }
 
@@ -488,7 +501,7 @@
     const ls = removeIgnored(lines(text), extra);
     const isHeader = (l) => /^[•*\-\s]*attempt\s+(due\s+in|by)\b/i.test(l);
     const isNoise = (l) =>
-      /^(assigned|unassigned|accepted|serve|in progress|primary|open|new|view|details)$/i.test(l) ||
+      /^(assigned|unassigned|accepted|serve|in progress|primary|related|open|new|view|details|picked up|pending|on hold)$/i.test(l) ||
       /^\d+\s+unread\s+chat/i.test(l) ||
       /^due\s+in\b/i.test(l) ||
       /^(hide|show)\s+\d+\s+jobs?\s+at\s+this\s+address/i.test(l) ||
@@ -553,6 +566,15 @@
           nameDone = true;
           return;
         }
+        // Proof wraps a long address, so the town and ZIP land on their own
+        // line — "2295 E Irlo Bronson Memorial Hwy, 172," then
+        // "Kissimmee, FL 34744-4419". Stitch it back on.
+        if (d.address && !hasZip(d.address) && /^[A-Za-z][A-Za-z .'\-]*,\s*[A-Z]{2}\b/.test(l)) {
+          d.address = cleanAddress(d.address.replace(/,\s*$/, "") + ", " + l);
+          if (!d.county) d.county = countyFor(d.address);
+          nameDone = true;
+          return;
+        }
         if (!nameDone) nameParts.push(l);
       });
 
@@ -565,8 +587,40 @@
       if (stacked > 1) extras.push(`${stacked} jobs at this address — check for a second one in Proof.`);
       if (extras.length) d.notes = (d.notes ? d.notes + "\n" : "") + extras.join("\n");
       if (d.county) d.county = titleCase(d.county);
-      return d;
-    }).filter((d) => d.person || d.address || d.job_no);
+
+      // "Hide 2 jobs at this address" means two people get served at one door,
+      // each with its own job number and its own pay. They used to collapse
+      // into a single job and the second person was simply lost.
+      const roster = [];
+      bl.forEach((line, i) => {
+        const m = line.match(/^(primary|related|additional)\s*[•·|]\s*(\d+)\s*\/\s*\d+\s*attempts?\s*[•·|]\s*#?\s*(\d{3,})/i);
+        if (!m) return;
+        let who = "";
+        for (let k = i - 1; k >= 0; k--) {
+          const c = bl[k].replace(/^[•·›»>*\-\s]+/, "").trim();
+          if (!c) continue;
+          if (/^(in progress|assigned|unassigned|accepted|open|new|pending|picked up|on hold)$/i.test(c)) continue;
+          if (/^(primary|related|additional)\b/i.test(c)) break;
+          who = c; break;
+        }
+        roster.push({ person: who, job_no: m[3], attempt_count: Number(m[2]) });
+      });
+
+      if (roster.length > 1) {
+        return roster.map((r, n) => {
+          const copy = Object.assign(blankDraft("Proof"), d, {
+            person: titleCase(r.person || d.person || ""),
+            job_no: r.job_no,
+            attempt_count: r.attempt_count
+          });
+          copy.is_business = BIZ.test(copy.person || "");
+          copy.notes = (d.notes ? d.notes + "\n" : "") +
+            `${roster.length} people served at this door — this is ${n + 1} of ${roster.length}.`;
+          return copy;
+        });
+      }
+      return [d];
+    }).reduce((a, b) => a.concat(b), []).filter((d) => d.person || d.address || d.job_no);
   }
 
   // ---------- Anything else (Lynx Legal fallback, anything new) ----------
