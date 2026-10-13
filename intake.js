@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 38: Lynx Legal reads their Party / Servees screen —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 39: Lynx Legal reads their Party / Servees screen, LIN reference and all —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 38 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 39 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -655,10 +655,25 @@
 
   function parseLynx(text, extra, client) {
     const ls = removeIgnored(lines(text), extra).filter((l) => !LYNX_JUNK.test(l));
+    // A job starts at its "LIN - 2026072310" reference, or at PARTY TO BE SERVED
+    // when there's no reference. The reference sits ABOVE the party line, so it
+    // has to open the block rather than close the one before it.
+    const isRef = (l) => /^[A-Za-z]{2,5}\s*[-–—]\s*\d{4,}$/.test(l);
+    const isParty = (l) => /^part(y|ies) to be served$/i.test(l);
     const blocks = [];
     let cur = null;
     ls.forEach((l) => {
-      if (/^part(y|ies) to be served$/i.test(l)) { if (cur) blocks.push(cur); cur = []; return; }
+      if (isRef(l)) {
+        if (cur && cur.some((x) => !isRef(x))) blocks.push(cur);
+        cur = [l];
+        return;
+      }
+      if (isParty(l)) {
+        // only break here if this block already holds a real job
+        if (cur && cur.some((x) => !isRef(x))) { blocks.push(cur); cur = []; }
+        else if (!cur) cur = [];
+        return;
+      }
       if (!cur) cur = [];
       cur.push(l);
     });
@@ -685,8 +700,12 @@
           addrOpen = !hasZip(d.address);
           return;
         }
+        // "LIN - 2026072310" is how Lynx prints their reference
+        const lx = l.match(/^([A-Za-z]{2,5})\s*[-–—]\s*(\d{4,})$/);
+        if (lx && !d.job_no) { d.job_no = lx[2]; d.notes = (d.notes ? d.notes + "\n" : "") + "Lynx ref " + lx[1].toUpperCase() + "-" + lx[2]; return; }
         const jm = l.match(/^(?:job|file|case|ref(?:erence)?|order)\s*(?:#|no\.?|number)?\s*[:\-]?\s*([A-Za-z0-9._\/-]{3,24})$/i)
-          || l.match(/#\s*([A-Za-z0-9._\/-]{3,24})$/);
+          || l.match(/#\s*([A-Za-z0-9._\/-]{3,24})$/)
+          || l.match(/^(\d{6,})$/);
         if (jm && !d.job_no) { d.job_no = jm[1]; return; }
         const pm = l.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
         if (pm) { if (d.price == null) d.price = Number(pm[1].replace(/,/g, "")); return; }
@@ -702,7 +721,7 @@
       const who = (nameLines.length ? nameLines : extraLines).join(" ").replace(/\s+/g, " ").trim();
       d.person = titleCase(who.replace(/\s*\.\.\.$/, ""));
       const detail = extraLines.join(" ").replace(/\s+/g, " ").trim();
-      if (detail && detail !== who) d.notes = "Servee: " + detail;
+      if (detail && detail !== who) d.notes = (d.notes ? d.notes + "\n" : "") + "Servee: " + detail;
       // "Attn:" only ever appears on a company, and so does a truncated desk name
       if (BIZ.test(d.person) || /\battn\b/i.test(detail) || /\b(health|hospital|medical|clinic|center|centre|school|college|church|store|market|restaurant|salon|dental|pharmacy)\b/i.test(d.person)) {
         d.is_business = true;
