@@ -1,13 +1,16 @@
-// J EMPIRE SERVER — jobs.js (version 37: paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 38: set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 37 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 38 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
   const byId = (id) => document.getElementById(id);
 
   const PAPER_CLIENTS = ["ProVest", "Userve"];
+  // What the client calls the job. "2 Day Post" is a posting to the door with a
+  // hard two-day clock — Proof sends a lot of them.
+  const JOB_TYPES = ["", "Routine", "Standard", "2 Day Post", "3 Day Post", "5 Day Post", "Expedited", "Same Day", "Priority"];
   const waitingPapers = (j) => j.status === "Active" && j.has_papers === false;
   function flagChips(j) {
     const out = [];
@@ -186,6 +189,7 @@
           ${canToday ? `<button class="today-btn ${j.on_today ? "on" : ""}" data-today="${j.id}">${j.on_today ? "✓ Today" : "+ Today"}</button>` : ""}
           ${wait ? `<button class="today-btn paper-btn" data-gotpaper="${j.id}">✓ ${PAPER_CLIENTS.includes(j.client) ? "Got it from Jean" : "Printed it"}</button>` : ""}
           ${j.status === "Active" && !wait ? `<button class="mini-flag" data-nopaper="${j.id}" aria-label="Mark waiting on papers">📄</button>` : ""}
+          <button class="mini-flag ${/day\s*post/i.test(j.job_type || "") ? "on post" : ""}" data-post="${j.id}" aria-label="2 Day Post">📌 2d</button>
           <button class="mini-flag ${j.service === "Rush" ? "on rush" : ""}" data-jflag="service" data-id="${j.id}" aria-label="Rush">⚡</button>
           <button class="mini-flag ${j.is_business ? "on biz" : ""}" data-jflag="is_business" data-id="${j.id}" aria-label="Business">🏢</button>
           <button class="btn ghost thin" data-open="${j.id}">${red ? "Fix" : "Open"}</button>
@@ -210,6 +214,21 @@
       const patch = f === "service" ? { service: j.service === "Rush" ? "Standard" : "Rush" } : { [f]: !j[f] };
       Object.assign(j, patch);
       if (await updateJob(j.id, patch)) after();
+    });
+    // 2 Day Post in one tap — and it sets the two-day deadline with it
+    box.querySelectorAll("[data-post]").forEach((b) => b.onclick = async () => {
+      const j = JS.jobs.find((x) => x.id === b.dataset.post);
+      const on = /day\s*post/i.test(j.job_type || "");
+      const patch = { job_type: on ? null : "2 Day Post" };
+      if (!on) {
+        const by = new Date(); by.setHours(12, 0, 0, 0); by.setDate(by.getDate() + 2);
+        patch.due_date = `${by.getFullYear()}-${String(by.getMonth() + 1).padStart(2, "0")}-${String(by.getDate()).padStart(2, "0")}`;
+      }
+      Object.assign(j, patch);
+      if (await updateJob(j.id, patch)) {
+        J().toast(on ? "2 Day Post taken off" : "2 Day Post — post it by " + patch.due_date);
+        after();
+      }
     });
     box.querySelectorAll("[data-nopaper]").forEach((b) => b.onclick = async () => {
       if (await updateJob(b.dataset.nopaper, { has_papers: false, on_today: false })) { J().toast("Moved to waiting on papers"); J().refreshBadges && J().refreshBadges(); after(); }
@@ -464,6 +483,7 @@
         <div class="grid2">
           <label>Status<select id="g_status">${opt(["Active", "On Hold", "Served", "Non-Serve Complete"], j.status)}</select></label>
           <label>Standard / Rush<select id="g_service">${opt(["Standard", "Rush"], j.service)}</select></label>
+          <label>Job type<select id="g_job_type">${opt(JOB_TYPES, j.job_type)}</select></label>
           <label>Client<select id="g_client">${opt(P().CLIENTS, j.client)}</select></label>
           <label>Job #<input id="g_job_no" inputmode="numeric" value="${esc(j.job_no || "")}"></label>
         </div>
@@ -511,9 +531,18 @@
     };
     byId("gSave").onclick = async () => {
       const patch = {};
-      ["status", "service", "client", "job_no", "person", "county", "due_date", "notes", "private_phone", "private_email"].forEach((k) => {
+      ["status", "service", "client", "job_no", "person", "county", "due_date", "notes", "job_type", "private_phone", "private_email"].forEach((k) => {
         if (f(k)) patch[k] = f(k).value.trim() || null;
       });
+      // A posting has its own clock: "2 Day Post" means posted within 2 days.
+      // If there's no deadline on the job yet, set one from the type.
+      const post = (patch.job_type || "").match(/^(\d+)\s*day\s*post/i);
+      if (post && !patch.due_date) {
+        const by = new Date(); by.setHours(12, 0, 0, 0);
+        by.setDate(by.getDate() + Number(post[1]));
+        patch.due_date = `${by.getFullYear()}-${String(by.getMonth() + 1).padStart(2, "0")}-${String(by.getDate()).padStart(2, "0")}`;
+        J().toast(`${patch.job_type} — deadline set to ${patch.due_date}`);
+      }
       patch.address = P().cleanAddress(f("address").value) || null;
       if (!patch.county && patch.address) patch.county = P().countyFor(patch.address) || null;
       patch.price = Number(String(f("price").value).replace(/[^0-9.]/g, "")) || 0;

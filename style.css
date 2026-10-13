@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 57: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 59: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1469,3 +1469,8 @@ ol.tight li { margin-bottom: 0.15rem; }
   border-radius: 9px; padding: 0.4rem 0.6rem; margin-top: 0.35rem;
   font-size: 0.82rem; font-weight: 700; line-height: 1.35;
 }
+.pay-warn { display: block; margin-top: 0.3rem; color: #8A2B1C; font-weight: 800; }
+
+/* ---------- posting jobs: a hard clock, not a knock ---------- */
+.flag.post.on { background: var(--purple, #5B3E8E); border-color: var(--purple, #5B3E8E); color: #fff; }
+.mini-flag.on.post { background: var(--purple, #5B3E8E); border-color: var(--purple, #5B3E8E); color: #fff; }

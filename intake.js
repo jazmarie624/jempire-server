@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 36: an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 37: 2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 36 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 37 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -960,6 +960,7 @@
         ${addressCount(d.address) > 1 ? `<button class="btn split-btn" data-split="${i}">✂️ Split into ${addressCount(d.address)} jobs</button>` : ""}
         <div class="flag-row">
           <button class="flag paper ${d.has_papers ? "on" : ""}" data-flag="has_papers" data-i="${i}">📄 ${d.has_papers ? "Papers in hand" : "NO PAPERS YET"}</button>
+          <button class="flag post ${/day\s*post/i.test(d.job_type || "") ? "on" : ""}" data-postflag="${i}">📌 ${d.job_type && /day\s*post/i.test(d.job_type) ? esc(d.job_type) : "2 Day Post"}</button>
           <button class="flag rush ${d.service === "Rush" ? "on" : ""}" data-flag="service" data-i="${i}">⚡ Rush</button>
           <button class="flag fore ${d.is_foreclosure ? "on" : ""}" data-flag="is_foreclosure" data-i="${i}">📚 Foreclosure</button>
           ${d.is_foreclosure ? `<label class="pk">packets <input inputmode="numeric" data-pk="${i}" value="${d.packets || 1}" aria-label="How many packets"></label>` : ""}
@@ -1037,6 +1038,20 @@
       if (f === "service") d.service = d.service === "Rush" ? "Standard" : "Rush";
       else d[f] = !d[f];
       if (f === "is_foreclosure" && d.is_foreclosure) d.price = (d.packets || 1) * packetRateFor(d.client);
+      saveLocal(); drawDrafts();
+    });
+    // 2 Day Post on a draft — sets the two-day clock at the same time
+    box.querySelectorAll("[data-postflag]").forEach((b) => b.onclick = () => {
+      const d = S.drafts[Number(b.dataset.postflag)];
+      const on = /day\s*post/i.test(d.job_type || "");
+      if (on) { d.job_type = ""; }
+      else {
+        d.job_type = "2 Day Post";
+        if (!d.due_date) {
+          const by = new Date(); by.setHours(12, 0, 0, 0); by.setDate(by.getDate() + 2);
+          d.due_date = `${by.getFullYear()}-${String(by.getMonth() + 1).padStart(2, "0")}-${String(by.getDate()).padStart(2, "0")}`;
+        }
+      }
       saveLocal(); drawDrafts();
     });
     box.querySelectorAll("[data-pk]").forEach((i) => i.onchange = () => {
