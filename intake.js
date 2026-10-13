@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 39: Lynx Legal reads their Party / Servees screen, LIN reference and all —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 40: phone Add Jobs: the client picker and Build follow you down the page, and “Paste another client” puts you back in the box —  Lynx Legal reads their Party / Servees screen, LIN reference and all —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 39 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 40 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -884,21 +884,22 @@
       <section class="intake">
         <div class="intake-left">
           <h1>Add Jobs</h1>
-          <div class="row-gap">
+          <div class="paste-bar" id="inBar">
             <label class="sr" for="inClient">Client</label>
             <select id="inClient" class="big-select">${CLIENTS.map((c) => `<option ${c === S.client ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
             <button class="btn" id="inBuild">Build Jobs</button>
           </div>
-          <button class="btn ghost wide" id="inOne">+ Add one job by hand</button>
-          <p class="muted small">For jobs that come in by email, by text, or over the phone — nothing to paste.</p>
           <label class="sr" for="inText">Paste jobs</label>
           <textarea id="inText" class="paste" placeholder="Paste all of this client's jobs here, exactly as copied."></textarea>
-          <p class="rule" id="inRule"></p>
-          <details class="ignore">
-            <summary>Extra words to ignore for <span id="igClient"></span></summary>
-            <p class="muted small">One word or line per row. Any pasted line that matches exactly gets dropped.</p>
-            <textarea id="igText" rows="3"></textarea>
-            <button class="btn ghost" id="igSave">Save ignore words</button>
+          <details class="reads"><summary>What this reads for <span id="igClient2"></span></summary>
+            <p class="rule" id="inRule"></p>
+            <button class="btn ghost wide" id="inOne">+ Add one job by hand</button>
+            <p class="muted small">For jobs that come in by email, by text, or over the phone — nothing to paste.</p>
+            <div class="ignore">
+              <p class="muted small"><b>Extra words to ignore for <span id="igClient"></span></b> — one word or line per row. Any pasted line that matches exactly gets dropped.</p>
+              <textarea id="igText" rows="3"></textarea>
+              <button class="btn ghost" id="igSave">Save ignore words</button>
+            </div>
           </details>
         </div>
         <div class="intake-right">
@@ -914,12 +915,18 @@
       S.client = sel.value;
       document.getElementById("inRule").textContent = RULES[S.client];
       document.getElementById("igClient").textContent = S.client;
+      document.getElementById("igClient2").textContent = S.client;
       document.getElementById("igText").value = (S.ignore[S.client] || []).join("\n");
     };
     sel.onchange = () => { syncClient(); saveLocal(); };
     document.getElementById("inBuild").onclick = build;
     document.getElementById("inOne").onclick = addOne;
     document.getElementById("igSave").onclick = saveIgnore;
+
+    // The helper text, "+ Add one job by hand" and the ignore words are one
+    // fold on the phone and wide open on the iPad, where there's room for them.
+    const reads = document.querySelector(".reads");
+    if (reads) reads.open = window.matchMedia("(min-width: 900px)").matches;
 
     await loadData();
     syncClient();
@@ -1160,8 +1167,19 @@
       ${red ? `<p class="muted small center">Red jobs can still be saved — you'll be asked what to do with them.</p>` : ""}
       ${dups ? `<button class="btn ghost" id="inDropDups">✕ Clear the ${dups} duplicate${dups === 1 ? "" : "s"}</button>
         <p class="muted small center">Already saved, so they won't be saved again. Tap ✕ on any card to drop just that one.</p>` : ""}
+      <button class="btn ghost wide phone-only" id="inAgain">↑ Paste another client</button>
       <button class="btn ghost" id="inClear">Clear all drafts</button>`;
     document.getElementById("inSave").onclick = checkBeforeSave;
+    // On the phone the paste box is a long way back up the screen by the time
+    // you've checked a stack of drafts. This puts you back in it in one tap,
+    // with these drafts still sitting underneath.
+    const ag = document.getElementById("inAgain");
+    if (ag) ag.onclick = () => {
+      const t = document.getElementById("inText");
+      const bar = document.getElementById("inBar");
+      (bar || t).scrollIntoView({ block: "start", behavior: "smooth" });
+      setTimeout(() => t && t.focus(), 420);
+    };
     const dd = document.getElementById("inDropDups");
     if (dd) dd.onclick = () => {
       const before = S.drafts.length;

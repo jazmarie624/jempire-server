@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 63: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 65: phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -950,11 +950,25 @@ ol.tight li { margin-bottom: 0.15rem; }
   .rt-head { display: none; }
   .rt-row { grid-template-columns: minmax(0, 1fr) 4.6rem 4.6rem; }
   .rt-row .muted.small { grid-column: 1 / -1; }
-  .sl-head, .sl-row { grid-template-columns: 1.3rem minmax(0, 1fr) 1.7rem 3.8rem 1.9rem 1.9rem 1.9rem; }
-  .sl-head span:nth-child(2), .sl-row .sl-date { grid-column: 2; font-size: 0.72rem; }
-  .sl-head span:nth-child(1) { grid-column: 1; }
-  .sl-row .sl-name { grid-column: 2; grid-row: 1; }
-  .sl-row .sl-date { grid-row: 2; }
+  /* On a phone the sheet is a stack of cards, not a table — the grid was
+     putting the ✕ on top of the job # box and the date behind the name. */
+  .sl-head { display: none; }
+  .sl-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+    padding: 0.7rem 0.6rem; border-bottom: 2px solid var(--line);
+  }
+  .sl-row > .muted { order: 1; flex: 0 0 1.6rem; font-size: 0.95rem; font-weight: 800; }
+  .sl-row .sl-name { order: 2; flex: 1 1 calc(100% - 2.2rem); min-width: 0; }
+  .sl-row .sl-date { order: 3; flex: 1 1 100%; display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; }
+  .sl-row .sl-sn { order: 4; flex: 0 0 2.2rem; font-size: 0.95rem; }
+  .sl-row > .right { order: 5; flex: 1 1 5.5rem; }
+  .sl-row > .center { order: 6; flex: 0 0 auto; }
+  .sl-row .cell-in { min-height: 46px; font-size: 1rem; padding: 0.35rem 0.6rem; }
+  .sl-row .cell-in.wide { width: 100%; }
+  .sl-row .sl-date .cell-in { flex: 1 1 auto; }
+  .sl-row .amt { min-height: 46px; width: 100%; font-size: 1rem; text-align: right; }
+  .sl-row .tick { width: 44px; height: 44px; font-size: 1.15rem; }
+  .sl-row .sl-addr { padding-left: 0; font-size: 0.8rem; white-space: normal; }
   .sl-head.pay, .sl-row.pay { grid-template-columns: 1.3rem minmax(0, 1fr) 4rem 4.4rem 2.6rem; }
 }
 
@@ -1536,3 +1550,160 @@ ol.tight li { margin-bottom: 0.15rem; }
 }
 .add-line-box .btn { width: 100%; }
 .add-line-box p { margin: 0.4rem 0 0; }
+
+
+/* =====================================================================
+   PHONE ROUTE — one navy strip, a live map band, the stop, what's coming
+   Nothing is removed: the strip IS the ZIP box, the rush bar, the
+   deadline warning, the rough-pin count and the money, folded flat.
+   Tap it and the real thing opens underneath, exactly as before.
+   ===================================================================== */
+.rstrip-wrap { display: none; }
+.rstrip {
+  display: flex; flex-direction: column; gap: 0.4rem; width: 100%; text-align: left;
+  background: var(--navy); color: #fff; border: 0; border-radius: 12px;
+  padding: 0.5rem 0.7rem; font-family: var(--sans); cursor: pointer;
+}
+.rstrip:active { background: #16203A; }
+.rs-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.rs-top b { font-size: 1rem; font-weight: 800; }
+.rs-top u { text-decoration: none; color: var(--gold); font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+.rs-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.rs-chips .sc {
+  background: rgba(255,255,255,.16); border-radius: 6px; padding: 0.1rem 0.4rem;
+  font-size: 0.76rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.rs-chips .sc.hot { background: var(--red); }
+.rs-chips .sc.warm { background: var(--gold); color: #1F2A44; }
+
+/* the map band, and the full screen it opens into */
+.map-wrap { position: relative; }
+.map-expand, .map-shrink { display: none; }
+.pop-open {
+  margin-top: 0.4rem; background: var(--navy); color: #fff; border: 0; border-radius: 7px;
+  padding: 0.3rem 0.6rem; font-size: 0.85rem; font-weight: 700; font-family: var(--sans);
+}
+
+/* what's coming up next — three stops and the miles between them */
+.nextup {
+  background: var(--paper); border: 2px solid var(--line); border-radius: 12px;
+  padding: 0.45rem 0.7rem; margin-top: 0.6rem;
+}
+/* The iPad shows the whole run at once, so "Coming up" is only earning its
+   space on the phone, where the next three stops are off the bottom. */
+.phone-block { display: none; }
+@media (max-width: 899px) { .phone-block { display: block; } }
+.nextup h4 {
+  margin: 0 0 0.3rem; font-size: 0.72rem; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--gold-text); font-family: var(--sans);
+}
+.nextup > div {
+  display: flex; align-items: baseline; gap: 0.45rem; padding: 0.28rem 0;
+  border-bottom: 1px solid var(--line); font-size: 0.92rem;
+}
+.nextup > div:last-child { border-bottom: 0; }
+.nextup > div b { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.nextup > div u { margin-left: auto; text-decoration: none; flex-shrink: 0; color: var(--navy-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.nx-again { font-style: normal; flex-shrink: 0; }
+
+/* re-tries saved for the end of the run */
+.flag-chip.again { background: #5B3E8E; }
+.retry-band {
+  display: flex; align-items: center; gap: 0.4rem; margin: 0.7rem 0 0.4rem;
+  background: #F0EBF7; border: 2px solid #5B3E8E; border-left: 8px solid #5B3E8E;
+  border-radius: 10px; padding: 0.45rem 0.7rem;
+  font-size: 0.86rem; font-weight: 700; color: #40285F; line-height: 1.35;
+}
+.retry-note {
+  margin: 0.35rem 0 0; font-size: 0.84rem; line-height: 1.45; color: var(--navy);
+  background: #F0EBF7; border: 2px solid #CDBEE4; border-radius: 10px; padding: 0.45rem 0.65rem;
+}
+
+@media (max-width: 899px) {
+  .rstrip-wrap { display: block; margin-bottom: 0.1rem; }
+  /* the filters stay on the road — she asked for them there — but as one row
+     you swipe sideways, not three rows between you and stop 1 */
+  .stop-filters {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; padding-bottom: 0.15rem; margin-bottom: 0.5rem;
+  }
+  .stop-filters::-webkit-scrollbar { display: none; }
+  .stop-filters .sf-chip { flex: 0 0 auto; }
+
+  /* Every pixel above the stop card is a pixel of the Served button pushed off
+     the bottom. The strip already says "Stop 1 of 10 · Osceola", so the heading
+     and the county switch above it are saying it twice. */
+  .route .route-head { display: none; }
+  .route .desk-county { display: none; }
+  .route .route-grid { gap: 0.45rem; margin-top: 0.45rem; }
+  .route .map-wrap { margin-top: 0.45rem; }
+  .route #rNear:empty, .route #rDid:empty, .route #rMsg:empty { display: none; }
+  .route .stops { margin-top: 0.1rem; }
+  /* the note box is one tap away from being typed in; it doesn't need to be tall */
+  .stop.current .note-in { min-height: 46px; }
+  /* folded away until the strip is tapped — still in the page, still complete */
+  .route .route-fold, .route .map-extras { display: none; }
+  .route.fold-open .route-fold { display: block; }
+  .route.fold-open .map-extras { display: block; }
+
+  /* the band: tall enough to read which way the cluster sits, short enough
+     that the name, the address and the Served button are all on screen */
+  .route .map { height: 118px; min-height: 0; border: 2px solid var(--navy); border-radius: 12px; }
+  .map-expand {
+    display: block; position: absolute; right: 0.4rem; bottom: 0.4rem; z-index: 420;
+    background: #fff; color: var(--navy); border: 2px solid var(--navy); border-radius: 8px;
+    padding: 0.2rem 0.5rem; font-size: 0.78rem; font-weight: 800; font-family: var(--sans);
+  }
+  .route .route-grid { gap: 0.6rem; }
+
+  /* full screen, over everything, with one way back */
+  .route.map-big .map-wrap {
+    position: fixed; inset: 0; z-index: 900; background: var(--ivory); padding: 0.5rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+  .route.map-big .map { height: 100%; border-radius: 12px; }
+  .route.map-big .map-expand { display: none; }
+  .route.map-big .map-shrink {
+    display: block; position: absolute; left: 0.9rem; top: 0.9rem; z-index: 920;
+    background: var(--navy); color: #fff; border: 0; border-radius: 9px;
+    padding: 0.45rem 0.8rem; font-size: 0.92rem; font-weight: 800; font-family: var(--sans);
+  }
+  /* the strip stays put while the stop list scrolls under it */
+  .rstrip-wrap { position: sticky; top: 3.6rem; z-index: 30; }
+  .near-wrap { top: 8.6rem; }
+}
+/* On a short phone (an SE, or a 14 with the tab bar showing) the band is the
+   last thing standing between her and the Served button, so it gives up a
+   little height rather than pushing the button off the bottom. */
+@media (max-width: 899px) and (max-height: 720px) {
+  .route .map { height: 88px; }
+  .rs-chips .sc { font-size: 0.72rem; padding: 0.08rem 0.35rem; }
+  .stop.current .note-in { min-height: 42px; }
+  .route .stop.current .stop-actions { gap: 0.35rem; }
+}
+
+/* =====================================================================
+   PHONE ADD JOBS — the client picker and Build follow you down the page,
+   so after a paste you never scroll back up to switch clients.
+   ===================================================================== */
+.paste-bar { display: flex; align-items: center; gap: 0.5rem; }
+.paste-bar .big-select { flex: 1; min-width: 0; }
+.paste-bar .btn { flex-shrink: 0; }
+.reads > summary { font-weight: 700; cursor: pointer; padding: 0.35rem 0; }
+.reads .rule { margin: 0.3rem 0 0.6rem; }
+.reads .ignore { margin-top: 0.7rem; }
+
+@media (max-width: 899px) {
+  .paste-bar {
+    position: sticky; top: 3.6rem; z-index: 30;
+    background: var(--ivory); border-bottom: 2px solid var(--gold);
+    padding: 0.45rem 0; margin: 0 0 0.45rem;
+  }
+  .intake .paste { min-height: 7.5rem; }
+  .intake-left h1 { margin-bottom: 0.2rem; }
+}
+/* On the iPad there's room, so the app opens this itself (see intake.js) and
+   the summary line is nothing but clutter. */
+@media (min-width: 900px) {
+  .reads > summary { display: none; }
+}
