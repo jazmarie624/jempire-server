@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 59: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 62: address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1474,3 +1474,55 @@ ol.tight li { margin-bottom: 0.15rem; }
 /* ---------- posting jobs: a hard clock, not a knock ---------- */
 .flag.post.on { background: var(--purple, #5B3E8E); border-color: var(--purple, #5B3E8E); color: #fff; }
 .mini-flag.on.post { background: var(--purple, #5B3E8E); border-color: var(--purple, #5B3E8E); color: #fff; }
+
+/* =====================================================================
+   Lineup fixes: 55 rows in a flex column were being squashed below their
+   own content, so long names spilled over the row underneath.
+   ===================================================================== */
+.sheet.lineup .lu-list > * { flex: 0 0 auto; }
+.sheet.lineup .lu-row { min-height: 0; align-items: flex-start; flex-shrink: 0; }
+.sheet.lineup .lu-name { overflow-wrap: anywhere; line-height: 1.3; }
+.sheet.lineup .lu-sub { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.sheet.lineup .lu-num { flex-shrink: 0; margin-top: 0.1rem; }
+.sheet.lineup .lu-tick { flex-shrink: 0; margin-top: 0.1rem; }
+
+/* the ZIP / client band inside the lineup */
+.lu-band {
+  flex: 0 0 auto; display: flex; justify-content: space-between; align-items: baseline;
+  background: var(--navy); color: #fff; border-radius: 9px;
+  padding: 0.3rem 0.7rem; margin-top: 0.5rem;
+  font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums;
+}
+.lu-band span { font-size: 0.74rem; font-weight: 600; opacity: 0.85; }
+.lu-seg { margin-bottom: 0.3rem; }
+
+@media print {
+  .lup-group { background: #eee; font-size: 11pt; padding: 4pt 6pt; border-top: 1.5pt solid #000; }
+}
+
+/* ---------- skip: pass on a stop without faking an attempt ---------- */
+.skip-row { margin-top: 0.45rem; }
+.skip-row .btn { border-color: var(--navy-2, #5A6478); color: var(--navy-2, #5A6478); }
+.skip-note {
+  margin: 0.3rem 0 0; font-size: 0.74rem; color: var(--navy-2, #5A6478);
+  font-weight: 600; text-align: center;
+}
+
+/* ---------- Route filters: work a cluster without losing the route ---------- */
+.stop-filters {
+  display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem;
+}
+.sf-chip {
+  background: var(--paper); border: 2px solid var(--line); border-radius: 10px;
+  padding: 0.35rem 0.7rem; font-size: 0.86rem; font-weight: 800; color: var(--navy);
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.sf-chip b { color: var(--gold-text); margin-left: 0.2rem; font-variant-numeric: tabular-nums; }
+.sf-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.sf-chip.on b { color: var(--gold); }
+.sf-chip.empty { opacity: 0.45; }
+.sf-note {
+  margin: 0 0 0.55rem; padding: 0.45rem 0.65rem; font-size: 0.82rem; line-height: 1.4;
+  background: #EDF1F7; border: 2px solid #C3D0E2; border-radius: 10px; color: var(--navy);
+  font-weight: 600;
+}

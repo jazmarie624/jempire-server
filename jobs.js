@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 38: set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 41: Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 38 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 41 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -576,7 +576,7 @@
     county: localStorage.getItem("jes_route_county") || "Osceola",
     start: localStorage.getItem("jes_route_start") || "here",
     started: false, here: null, watchId: null, dismissed: new Set(),
-    map: null, stops: [], all: [], open: null, vague: 0,
+    map: null, stops: [], all: [], open: null, vague: 0, filter: "all",
     miles: Number(localStorage.getItem("jes_route_miles") || 0),
     lastPt: JSON.parse(localStorage.getItem("jes_route_lastpt") || "null")
   };
@@ -933,8 +933,10 @@
     // Several stops landing on ONE point means the lookup gave up on the street
     // and dropped them in the middle of the ZIP. They used to hide under each
     // other and look like a single correct pin. Now they fan out and say so.
+    const mf = stopFilter();
+    const onMap = RS.stops.map((j, i) => ({ j, i })).filter(({ j }) => mf.test(j));
     const tally = {};
-    RS.stops.forEach((j) => {
+    onMap.forEach(({ j }) => {
       if (j.lat == null) return;
       const k = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
       tally[k] = (tally[k] || 0) + 1;
@@ -942,7 +944,7 @@
     const pts = [];
     const seen = {};
     let vague = 0;
-    RS.stops.forEach((j, i) => {
+    onMap.forEach(({ j, i }) => {
       if (j.lat == null) return;
       const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
       const stacked = tally[key] > 1;
@@ -982,11 +984,12 @@
     // Say plainly how many stops actually made it onto the map
     const tag = byId("rMapCount");
     if (tag) {
-      const off = RS.stops.length - pts.length;
+      const off = onMap.length - pts.length;
       const bits = [];
       if (off) bits.push(`<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map</b> — tap <b>Find missing pins</b>.`);
       if (RS.vague) bits.push(`<b class="bad">${RS.vague} pin${RS.vague === 1 ? " is" : "s are"} a rough guess</b> — the lookup couldn't find the street and used the middle of the ZIP instead. Those are the hollow pins. Don't trust them to navigate, and don't trust the drive order around them.`);
-      if (!bits.length) bits.push(`All ${RS.stops.length} stops are on the map, each at its own address.`);
+      if (!bits.length) bits.push(`All ${onMap.length} stop${onMap.length === 1 ? " is" : "s are"} on the map, each at its own address.`);
+      if (RS.filter !== "all") bits.unshift(`<b>Map is showing the ${J().esc(mf.label.replace(/^\S+\s/, "").toLowerCase())} only.</b>`);
       tag.innerHTML = bits.join(" ");
     }
   }
@@ -1011,6 +1014,18 @@
     J().toast(found ? `${found} more stop${found === 1 ? "" : "s"} on the map` : "Couldn't place those — check the addresses");
   }
 
+  // Postings and business serves arrive in clusters and you'd rather clear a
+  // whole cluster than hop between them. These only change what's SHOWN — the
+  // drive order, the paper numbers and the route itself are untouched.
+  const STOP_FILTERS = [
+    { id: "all",  label: "All stops",   test: () => true },
+    { id: "post", label: "📌 Postings", test: (j) => /day\s*post/i.test(j.job_type || "") },
+    { id: "biz",  label: "🏢 Business", test: (j) => !!j.is_business },
+    { id: "due",  label: "⏰ Due soon",  test: (j) => { const d = daysLeft(j); return d != null && d <= 1; } },
+    { id: "rush", label: "⚡ Rush",      test: (j) => j.service === "Rush" }
+  ];
+  const stopFilter = () => STOP_FILTERS.find((f) => f.id === RS.filter) || STOP_FILTERS[0];
+
   function drawStops() {
     const { esc } = J();
     const box = byId("rStops");
@@ -1021,7 +1036,21 @@
     // Whichever stop is open shows the Served buttons. It's the next one up by
     // default, but tapping any card opens it — for when you cut the line.
     if (RS.open && !RS.stops.some((s) => s.id === RS.open)) RS.open = null;
-    box.innerHTML = RS.stops.map((j, i) => {
+    const f = stopFilter();
+    const shown = RS.stops.map((j, i) => ({ j, i })).filter(({ j }) => f.test(j));
+    const chips = `<div class="stop-filters" id="rFilter">${STOP_FILTERS.map((x) => {
+      const n = RS.stops.filter(x.test).length;
+      return `<button class="sf-chip ${x.id === RS.filter ? "on" : ""} ${n ? "" : "empty"}" data-f="${x.id}">${x.label} <b>${n}</b></button>`;
+    }).join("")}</div>` +
+      (RS.filter !== "all"
+        ? `<p class="sf-note">Showing <b>${shown.length}</b> of ${RS.stops.length} stops — ${esc(f.label.replace(/^\S+\s/, "").toLowerCase())} only. Everything else is still on the route.${RS.filter === "biz" ? `<br><b>${businessHoursNow() ? "You're inside registered-agent hours right now (10–12, 2–4)." : "It's outside registered-agent hours (10–12, 2–4) — these won't take."}</b>` : ""}</p>`
+        : "");
+    if (!shown.length) {
+      box.innerHTML = chips + `<div class="card center"><b>Nothing matches that.</b><p class="muted">Tap <b>All stops</b> to see the whole run again.</p></div>`;
+      wireFilter();
+      return;
+    }
+    box.innerHTML = chips + shown.map(({ j, i }) => {
       const first = RS.open ? j.id === RS.open : i === 0;
       const no = stopNo(j, i);
       const moved = no !== i + 1;
@@ -1058,6 +1087,11 @@
             <button class="btn ghost gold grow" data-act="Attempt" data-id="${j.id}">Attempted</button>
             <button class="btn grow" data-act="Non-Serve" data-id="${j.id}">Non-Served</button>
           </div>
+          <div class="row-gap skip-row">
+            <button class="btn ghost thin grow" data-skip="later" data-id="${j.id}">⤓ Skip — later today</button>
+            <button class="btn ghost thin grow" data-skip="off" data-id="${j.id}">📅 Skip — not today</button>
+          </div>
+          <p class="skip-note">Skipping never logs an attempt. Your 5 tries stay untouched.</p>
         </div>` : `
         <div class="row-gap small-actions">
           <a class="btn ghost thin grow" href="https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a>
@@ -1065,6 +1099,33 @@
         </div>`}
       </div>`;
     }).join("");
+    wireFilter();
+    // Driving past a job isn't an attempt. Logging a false one burns a try and
+    // puts something in the record that never happened, so skipping leaves the
+    // attempt count exactly where it was.
+    box.querySelectorAll("[data-skip]").forEach((b) => b.onclick = async () => {
+      const j = RS.stops.find((x) => x.id === b.dataset.id);
+      if (!j) return;
+      const when = new Date().toLocaleDateString([], { month: "short", day: "numeric" });
+      if (b.dataset.skip === "later") {
+        const i = RS.stops.indexOf(j);
+        RS.stops.splice(i, 1); RS.stops.push(j);
+        RS.open = null;
+        await saveOrder();
+        drawStops(); drawMap(); drawZipLedger();
+        J().toast("Moved to the end of today's run — paper #" + (j.lineup_no || "") );
+        return;
+      }
+      const note = (j.notes ? j.notes + "\n" : "") + `Skipped ${when} — drove past, no attempt made.`;
+      if (!(await updateJob(j.id, { on_today: false, route_order: null, notes: note }))) return;
+      j.notes = note; j.on_today = false;
+      RS.stops = RS.stops.filter((x) => x.id !== j.id);
+      RS.open = null;
+      await saveOrder();
+      drawStops(); drawMap(); drawZipLedger();
+      J().refreshBadges && J().refreshBadges();
+      J().toast("Off today's route — back in Ready to route, no attempt logged");
+    });
     box.querySelectorAll("[data-open-stop]").forEach((el) => {
       const open = () => { RS.open = el.dataset.openStop; drawStops(); };
       el.onclick = (e) => { if (e.target.closest(".move")) return; open(); };
@@ -1237,6 +1298,18 @@
     };
   }
 
+  function wireFilter() {
+    const box = byId("rFilter");
+    if (!box) return;
+    box.onclick = (e) => {
+      const b = e.target.closest("[data-f]");
+      if (!b) return;
+      RS.filter = b.dataset.f;
+      RS.open = null;
+      drawStops(); drawMap();
+    };
+  }
+
   function drawAddMore() {
     const { esc } = J();
     const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && !j.in_attempts && (j.county === RS.county || !j.county) && !needsAddress(j) && !waitingPapers(j));
@@ -1251,6 +1324,20 @@
   }
 
   // ---------- Lineup: the numbered list for sticky-noting the papers ----------
+  // The paper number is frozen to the drive order, but you sort the physical
+  // stack by ZIP (that's how Gene hands them over) or by client. So the list
+  // can be grouped either way while the numbers stay the numbers.
+  const LU = { sort: (() => { try { return localStorage.getItem("jes_lu_sort") || "zip"; } catch (e) { return "zip"; } })() };
+  const zipOf = (j) => ((j.address || "").match(/\b(\d{5})(?:-\d{4})?\b/) || [])[1] || "No ZIP";
+  const bandOf = (j) => LU.sort === "client" ? (j.client || "No client")
+    : LU.sort === "zip" ? zipOf(j) : "In driving order";
+  function lineupOrder() {
+    const withNo = RS.stops.map((j, i) => ({ j, no: stopNo(j, i), i }));
+    if (LU.sort === "drive") return withNo;
+    return withNo.slice().sort((a, b) =>
+      bandOf(a.j).localeCompare(bandOf(b.j)) || a.no - b.no);
+  }
+
   function lineKey() { return "jes_lineup_" + todayKey() + "_" + RS.county; }
   function lineDone() {
     try { return new Set(JSON.parse(localStorage.getItem(lineKey()) || "[]")); } catch (e) { return new Set(); }
@@ -1274,17 +1361,29 @@
       if (d <= 3) return `<span class="lu-due soon">${d} DAYS</span>`;
       return "";
     };
-    const rows = () => RS.stops.map((j, i) => `
-      <div class="lu-row ${done.has(j.id) ? "on" : ""} ${dueClass(j)}" data-lu="${j.id}" role="button" tabindex="0"
-           aria-label="Paper number ${stopNo(j, i)}, ${esc(j.person || "no name")}">
-        <div class="lu-num">${stopNo(j, i)}</div>
-        <div class="lu-text">
-          <div class="lu-name">${esc(j.person || "(no name)")}</div>
-          <div class="lu-sub">${esc(j.address || "")}</div>
-          <div class="lu-sub2">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}${dueChip(j)}${j.has_papers === false ? ` <span class="lu-due late">NO PAPERS</span>` : ""}</div>
-        </div>
-        <div class="lu-tick">${done.has(j.id) ? "✓" : ""}</div>
-      </div>`).join("");
+    // You work the paper stack, not the drive order — so the list is grouped the
+    // way the papers are: by ZIP, or by client when you're sorting for a client.
+    const rows = () => {
+      const list = lineupOrder();
+      let band = "";
+      return list.map(({ j, no }) => {
+        const b = bandOf(j);
+        const head = b !== band
+          ? `<div class="lu-band">${esc(b)}<span>${list.filter((x) => bandOf(x.j) === b).length} job${list.filter((x) => bandOf(x.j) === b).length === 1 ? "" : "s"}</span></div>` : "";
+        band = b;
+        return head + `
+        <div class="lu-row ${done.has(j.id) ? "on" : ""} ${dueClass(j)}" data-lu="${j.id}" role="button" tabindex="0"
+             aria-label="Paper number ${no}, ${esc(j.person || "no name")}">
+          <div class="lu-num">${no}</div>
+          <div class="lu-text">
+            <div class="lu-name">${esc(j.person || "(no name)")}</div>
+            <div class="lu-sub">${esc(j.address || "")}</div>
+            <div class="lu-sub2">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}${dueChip(j)}${j.has_papers === false ? ` <span class="lu-due late">NO PAPERS</span>` : ""}</div>
+          </div>
+          <div class="lu-tick">${done.has(j.id) ? "✓" : ""}</div>
+        </div>`;
+      }).join("");
+    };
 
     const paint = () => {
       const n = RS.stops.length, got = RS.stops.filter((j) => done.has(j.id)).length;
@@ -1292,6 +1391,11 @@
         <div class="lu-head">
           <h2 id="luT">Lineup · ${esc(RS.county)}</h2>
           <span class="lu-count ${got === n ? "all" : ""}">${got} of ${n} numbered</span>
+        </div>
+        <div class="seg lu-seg" id="luSort">
+          <button class="${LU.sort === "zip" ? "on" : ""}" data-s="zip">By ZIP</button>
+          <button class="${LU.sort === "client" ? "on" : ""}" data-s="client">By client</button>
+          <button class="${LU.sort === "drive" ? "on" : ""}" data-s="drive">Drive order</button>
         </div>
         <p class="muted small">Write the number on the papers, then tap the row.</p>
         <div class="lu-list">${rows()}</div>
@@ -1306,6 +1410,10 @@
         lineSave(done);
         paint();
       });
+      byId("luSort").onclick = (e) => {
+        const b = e.target.closest("[data-s]");
+        if (b) { LU.sort = b.dataset.s; try { localStorage.setItem("jes_lu_sort", LU.sort); } catch (err) {} paint(); }
+      };
       byId("luClose").onclick = () => { back.hidden = true; back.innerHTML = ""; };
       byId("luPrint").onclick = () => { back.hidden = true; back.innerHTML = ""; printLineup(); };
     };
@@ -1432,16 +1540,27 @@
     const { esc } = J();
     const d = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
     byId("printSheet").innerHTML = `
-      <div class="print-head"><b>Lineup · ${esc(RS.county)} County</b><span>${esc(d)} · ${RS.stops.length} stops</span></div>
+      <div class="print-head"><b>Lineup · ${esc(RS.county)} County</b><span>${esc(d)} · ${RS.stops.length} stops · sorted by ${LU.sort === "client" ? "client" : LU.sort === "zip" ? "ZIP code" : "driving order"}</span></div>
       <table class="lu-print">
         <thead><tr><th class="lup-n">#</th><th>NAME</th><th>ADDRESS</th><th class="lup-c">CLIENT · JOB #</th><th class="lup-x">✓</th></tr></thead>
-        <tbody>${RS.stops.map((j, i) => `<tr>
-          <td class="lup-n">${stopNo(j, i)}</td>
-          <td><b>${esc(j.person || "(no name)")}</b></td>
-          <td>${esc(j.address || "")}</td>
-          <td class="lup-c">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</td>
-          <td class="lup-x"></td>
-        </tr>`).join("")}</tbody>
+        <tbody>${(() => {
+          const list = lineupOrder();
+          let band = "";
+          return list.map(({ j, no }) => {
+            const b = bandOf(j);
+            const n = list.filter((x) => bandOf(x.j) === b).length;
+            const head = b !== band
+              ? `<tr><td colspan="5" class="lup-group"><b>${esc(b)}</b> — ${n} job${n === 1 ? "" : "s"}</td></tr>` : "";
+            band = b;
+            return head + `<tr>
+              <td class="lup-n">${no}</td>
+              <td><b>${esc(j.person || "(no name)")}</b></td>
+              <td>${esc(j.address || "")}</td>
+              <td class="lup-c">${esc(j.client || "")}${j.job_no ? " · #" + esc(j.job_no) : ""}</td>
+              <td class="lup-x"></td>
+            </tr>`;
+          }).join("");
+        })()}</tbody>
       </table>`;
     window.print();
   }
