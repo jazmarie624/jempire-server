@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 37: 2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 38: Lynx Legal reads their Party / Servees screen —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 37 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 38 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -19,7 +19,7 @@
     "Accurate Serve": "Keeps: the job #, name, Due date, address, and Routine or Rush. Ignores: the Assn date and the Attempts line.",
     "Legal Serve USA": "Same system as Accurate Serve, so it reads the same paste: job #, name, Due date, address, Routine or Rush. Set their rate in Money → Rates when you know it.",
     "Proof": "Keeps: whatever it can find — name, address, job #, and the price when the paste includes a dollar amount. Check the price on every job before you save.",
-    "Lynx Legal": "Same shape as Ody's: Standard or Rush, name, job #, and the address when it's included. Set their rate in Money → Rates when you know it.",
+    "Lynx Legal": "Reads their Party / Servees screen — party name, the Attn: line, and the address even when it wraps. Ignores View, Attempt and Add Servee. Set their rate in Money → Rates.",
     "Legal Serve USA": "No set format yet — it reads any address it finds and takes the line above it as the name. Fix whatever it gets wrong before saving.",
     "Private": "Makes a blank job for you to fill in. If you paste an address, it's filled in for you."
   };
@@ -644,6 +644,74 @@
     }).reduce((a, b) => a.concat(b), []).filter((d) => d.person || d.address || d.job_no);
   }
 
+  // ---------- Lynx Legal ----------
+  // Their screen is built round headers, not a list:
+  //   PARTY TO BE SERVED / <who> / SERVEES / <who, often with an Attn: line>
+  //   <street> / <City, FL ZIP> / View / Attempt / Add Servee
+  // The address wraps across two lines and the buttons sit in the copy.
+  const LYNX_JUNK = /^(view|attempt|serve|add servee|add party|edit|map|details|directions|open|close|back|status|print|save|more|less|show|hide)$/i;
+  const LYNX_HEAD = /^(party to be served|parties to be served|servees?|servee details?|service address(?:es)?|address)$/i;
+  const looksLynx = (ls) => ls.some((l) => /^part(y|ies) to be served$/i.test(l)) || ls.some((l) => /^servees?$/i.test(l));
+
+  function parseLynx(text, extra, client) {
+    const ls = removeIgnored(lines(text), extra).filter((l) => !LYNX_JUNK.test(l));
+    const blocks = [];
+    let cur = null;
+    ls.forEach((l) => {
+      if (/^part(y|ies) to be served$/i.test(l)) { if (cur) blocks.push(cur); cur = []; return; }
+      if (!cur) cur = [];
+      cur.push(l);
+    });
+    if (cur && cur.length) blocks.push(cur);
+
+    return blocks.map((bl) => {
+      const d = blankDraft(client);
+      d.raw_text = bl.join("\n");
+      const nameLines = [], extraLines = [];
+      let inServees = false, addrOpen = false;
+
+      bl.forEach((l) => {
+        if (/^servees?$/i.test(l)) { inServees = true; return; }
+        if (LYNX_HEAD.test(l)) return;
+
+        // "City, FL 34744" finishing the street line above it
+        if (addrOpen && /^[A-Za-z][A-Za-z .'\-]*,\s*[A-Z]{2}\b/.test(l)) {
+          d.address = cleanAddress(d.address.replace(/,\s*$/, "") + ", " + l);
+          addrOpen = false;
+          return;
+        }
+        if (!d.address && (STREET_START.test(l) || hasZip(l))) {
+          d.address = cleanAddress(l);
+          addrOpen = !hasZip(d.address);
+          return;
+        }
+        const jm = l.match(/^(?:job|file|case|ref(?:erence)?|order)\s*(?:#|no\.?|number)?\s*[:\-]?\s*([A-Za-z0-9._\/-]{3,24})$/i)
+          || l.match(/#\s*([A-Za-z0-9._\/-]{3,24})$/);
+        if (jm && !d.job_no) { d.job_no = jm[1]; return; }
+        const pm = l.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+        if (pm) { if (d.price == null) d.price = Number(pm[1].replace(/,/g, "")); return; }
+        if (/^(rush|priority|expedited|same.?day|asap)$/i.test(l)) { d.service = "Rush"; d.job_type = titleCase(l); return; }
+        if (/^(standard|routine|regular)$/i.test(l)) { d.service = "Standard"; d.job_type = titleCase(l); return; }
+        if (/^\d+\s*day\s*post/i.test(l)) { d.job_type = titleCase(l); return; }
+
+        // everything else is who you're serving — the party first, then the
+        // servee detail ("Attn: Radiology Records") which matters at the desk
+        if (!inServees) nameLines.push(l); else extraLines.push(l);
+      });
+
+      const who = (nameLines.length ? nameLines : extraLines).join(" ").replace(/\s+/g, " ").trim();
+      d.person = titleCase(who.replace(/\s*\.\.\.$/, ""));
+      const detail = extraLines.join(" ").replace(/\s+/g, " ").trim();
+      if (detail && detail !== who) d.notes = "Servee: " + detail;
+      // "Attn:" only ever appears on a company, and so does a truncated desk name
+      if (BIZ.test(d.person) || /\battn\b/i.test(detail) || /\b(health|hospital|medical|clinic|center|centre|school|college|church|store|market|restaurant|salon|dental|pharmacy)\b/i.test(d.person)) {
+        d.is_business = true;
+      }
+      if (!d.county) d.county = countyFor(d.address);
+      return d;
+    }).filter((d) => d.person || d.address || d.job_no);
+  }
+
   // ---------- Anything else (Lynx Legal fallback, anything new) ----------
   // No fixed layout: every address line starts a job, and the lines above it
   // are read for a name, a job #, a due date and a dollar amount.
@@ -702,7 +770,11 @@
   function parse(client, text, extra) {
     if (client === "ABC Legal") return parseABC(text, extra);
     // Lynx Legal comes out in the same shape as Ody's
-    if (client === "Ody's" || client === "Lynx Legal") return parseOdys(text, extra, client);
+    if (client === "Lynx Legal") {
+      const ls = removeIgnored(lines(text), extra);
+      return looksLynx(ls) ? parseLynx(text, extra, client) : parseOdys(text, extra, client);
+    }
+    if (client === "Ody's") return parseOdys(text, extra, client);
     if (client === "ProVest") return parseProVest(text, extra);
     if (client === "Userve") return parseUserve(text, extra);
     // Accurate Serve and Legal Serve USA run on the same system, so the paste is identical
