@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — office.js (version 28: every stop behind a day’s miles, and a real mileage log —  miles day by day, with a spreadsheet: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
+// J EMPIRE SERVER — office.js (version 29: add a job straight onto a sheet, and delete a line — every stop behind a day’s miles, and a real mileage log —  miles day by day, with a spreadsheet: address on every sheet line —  names and job numbers typed straight on the sheet —  warns about blank names and job numbers before closing —  paid button reports failures —  J Empire invoice for everyone but Jean's two —  take a line back off a sheet —  Sheets, payment trackers, Jean's printed form)
 // One open sheet per company. Served / Non-Served drops a line on it by itself.
 // Close a sheet to freeze it, print it, and open a line in that company's tracker.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 28 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { office: 29 });
   const J = () => window.JES;
   const byId = (id) => document.getElementById(id);
   const O = { rates: [], sheets: [], jobs: [], goal: 500, rate: 0.7, showMiles: false, openDay: null, stops: [] };
@@ -174,7 +174,7 @@
 
         <div class="sheet-lines">
           <div class="sl-head">
-            <span>#</span><span>Date · Job #</span><span>Name</span><span>S/NS</span><span class="right">Amount</span><span class="center">✓</span><span class="center">↩</span>
+            <span>#</span><span>Date · Job #</span><span>Name</span><span>S/NS</span><span class="right">Amount</span><span class="center">✓</span><span class="center">↩</span><span class="center">✕</span>
           </div>
           ${ls.length ? ls.map((j, i) => `
             <div class="sl-row ${!Number(j.price) ? "zero" : ""}">
@@ -188,8 +188,15 @@
               <span class="right"><input class="amt" type="number" inputmode="decimal" step="0.01" placeholder="—" value="${j.price != null && Number(j.price) ? Number(j.price).toFixed(2) : ""}" data-price="${j.id}" aria-label="Amount for ${esc(j.person || "job")}"></span>
               <span class="center"><button class="tick ${j.chk_client_app ? "on" : ""}" data-tick="${j.id}" aria-label="Entered in their app">${j.chk_client_app ? "✓" : "·"}</button></span>
               <span class="center"><button class="tick undo" data-unserve="${j.id}" aria-label="Put ${esc(j.person || "this job")} back on the route">↩</button></span>
+              <span class="center"><button class="tick drop" data-dropline="${j.id}" aria-label="Delete ${esc(j.person || "this line")} from the sheet">✕</button></span>
             </div>`).join("")
           : `<p class="muted center pad">Nothing on this sheet yet. Tap Served or Non-Served out on the route and it lands here.</p>`}
+        </div>
+
+        <div class="add-line-box">
+          <button class="btn ghost" id="shAdd">+ Add a job to this sheet</button>
+          <p class="muted small">For work you did before the app, or anything that never went through a route.
+            It goes straight onto this sheet as served — no route, no attempt.</p>
         </div>
 
         <div class="sl-total"><span>Sheet total · ${ls.length} job${ls.length === 1 ? "" : "s"}</span><b>${money(total)}</b></div>
@@ -251,6 +258,23 @@
       J().refreshBadges && J().refreshBadges();
       await load(); openSheet(sheetId);
     });
+    // Delete a line outright — for one you typed in by hand, or a mistake
+    document.querySelectorAll("[data-dropline]").forEach((b) => b.onclick = async () => {
+      const id = b.getAttribute("data-dropline");
+      const j = O.jobs.find((x) => x.id === id);
+      const who = (j && (j.person || j.address)) || "this line";
+      if (!confirm(`Delete ${who} from the ${sheet.company} sheet for good?\n\nThis removes the job completely. To put it back on the route instead, use ↩.`)) return;
+      await J().db.from("jes_attempts").delete().eq("job_id", id);
+      const { error } = await J().db.from("jes_jobs").delete().eq("id", id);
+      if (error) { J().toast("Not deleted: " + error.message); return; }
+      J().toast("Deleted");
+      J().refreshBadges && J().refreshBadges();
+      await load(); openSheet(sheetId);
+    });
+
+    // Add a job you did before the app, or one that never went on a route
+    byId("shAdd").onclick = () => addToSheet(sheet);
+
     document.querySelectorAll("[data-job]").forEach((s) => s.onclick = () =>
       window.JES_JOBS && window.JES_JOBS.openJob(s.getAttribute("data-job")));
     byId("shPrint").onclick = () => printForJean(sheet, ls, total);
@@ -462,6 +486,68 @@
       O.openDay = O.openDay === b.dataset.day ? null : b.dataset.day;
       drawMoney(opts);
     });
+  }
+
+  // ---------- type a job straight onto a sheet ----------
+  // Work you did before the app, or anything that never went through a route.
+  // It lands as served, on this sheet, with no attempt logged.
+  function addToSheet(sheet) {
+    const { esc } = J();
+    const back = byId("sheetBack") || document.body.appendChild(
+      Object.assign(document.createElement("div"), { id: "sheetBack", className: "sheet-back" }));
+    const rate = O.rates.find((r) => r.company === sheet.company) || {};
+    const today = todayISO();
+    back.hidden = false;
+    back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="asT">
+      <h2 id="asT">Add a job to ${esc(sheet.company)}</h2>
+      <p class="muted small">Goes straight onto this sheet as served. Nothing is routed and no attempt is recorded.</p>
+      <div class="grid2">
+        <label>Date served<input id="as_date" type="date" value="${esc(today)}"></label>
+        <label>Job #<input id="as_job" placeholder="their number"></label>
+      </div>
+      <label>Person or company served<input id="as_person" placeholder="who you served"></label>
+      <label>Address<input id="as_addr" placeholder="street, city, FL ZIP"></label>
+      <div class="grid2">
+        <label>Amount<input id="as_price" type="number" inputmode="decimal" step="0.01"
+          value="${rate.flat != null ? Number(rate.flat).toFixed(2) : ""}" placeholder="0.00"></label>
+        <label>Served / Non-Served<select id="as_out"><option>Served</option><option>Non-Served</option></select></label>
+      </div>
+      <label>Note (optional)<input id="as_note" placeholder="anything you want on the record"></label>
+      <div class="sheet-btns">
+        <button class="btn ghost" id="asCancel">Cancel</button>
+        <button class="btn go" id="asSave">Add to the sheet</button>
+      </div>
+    </div>`;
+    const close = () => { back.hidden = true; back.innerHTML = ""; };
+    byId("asCancel").onclick = close;
+    byId("asSave").onclick = async () => {
+      const v = (id) => { const el = byId(id); return el ? el.value.trim() : ""; };
+      const person = v("as_person"), addr = v("as_addr");
+      if (!person && !addr) { J().toast("Give it a name or an address first"); return; }
+      const day = v("as_date") || today;
+      const out = v("as_out") === "Non-Served" ? "Non-Served" : "Served";
+      const row = {
+        client: sheet.company, sheet_id: sheet.id,
+        person: person || null, job_no: v("as_job") || null,
+        address: addr ? J().P ? J().P().cleanAddress(addr) : addr : null,
+        county: null,
+        price: Number(v("as_price")) || 0,
+        status: out === "Served" ? "Served" : "Non-Serve Complete",
+        outcome: out, done_at: day + "T12:00:00",
+        on_today: false, has_papers: true, source: "By hand",
+        notes: (v("as_note") ? v("as_note") + "\n" : "") + "Typed onto the sheet by hand — did not go through a route."
+      };
+      if (window.JES_PARSE && addr) {
+        row.address = window.JES_PARSE.cleanAddress(addr);
+        row.county = window.JES_PARSE.countyFor(row.address) || null;
+      }
+      const { error } = await J().db.from("jes_jobs").insert(row);
+      if (error) { J().toast("Not added: " + error.message); return; }
+      close();
+      J().toast("Added to the " + sheet.company + " sheet");
+      J().refreshBadges && J().refreshBadges();
+      await load(); openSheet(sheet.id);
+    };
   }
 
   // ---------- rebuild one day's actual driving from the stops you made ----------
@@ -678,6 +764,23 @@
       J().toast(already ? "Marked unpaid" : "Paid " + J().money(amount) + " ✓");
       await load(); await syncSheetPaid(sheetId); openTracker(sheetId);
     });
+    // Delete a line outright — for one you typed in by hand, or a mistake
+    document.querySelectorAll("[data-dropline]").forEach((b) => b.onclick = async () => {
+      const id = b.getAttribute("data-dropline");
+      const j = O.jobs.find((x) => x.id === id);
+      const who = (j && (j.person || j.address)) || "this line";
+      if (!confirm(`Delete ${who} from the ${sheet.company} sheet for good?\n\nThis removes the job completely. To put it back on the route instead, use ↩.`)) return;
+      await J().db.from("jes_attempts").delete().eq("job_id", id);
+      const { error } = await J().db.from("jes_jobs").delete().eq("id", id);
+      if (error) { J().toast("Not deleted: " + error.message); return; }
+      J().toast("Deleted");
+      J().refreshBadges && J().refreshBadges();
+      await load(); openSheet(sheetId);
+    });
+
+    // Add a job you did before the app, or one that never went on a route
+    byId("shAdd").onclick = () => addToSheet(sheet);
+
     document.querySelectorAll("[data-job]").forEach((s) => s.onclick = () =>
       window.JES_JOBS && window.JES_JOBS.openJob(s.getAttribute("data-job")));
     byId("tPrint").onclick = () => printForJean(sheet, ls.map((j) => Object.assign({}, j, { price: j.billed })), billedTotal);
