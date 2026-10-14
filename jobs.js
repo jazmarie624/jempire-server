@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 48: THE PINS — the lookup was shrinking street names when it should have been spelling them out, searching as one blob, and believing any answer it got —  it now asks the US Census first, asks properly, and checks the answer before saving it —  a guessed pin can no longer plan your drive: it is parked at the end and flagged —  “Fix the pins”: look them all up again, or drop one by hand and keep it —  the road bar — re-route from where you are, from home, start/end, renumber: none of it folds away any more —  “Where I am now” really re-routes, with the alert —  the top bar is alerts only, every one of them tappable —  renumber the papers 1…n after deletes —  fit a job into the drive where it costs the least —  postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 49: “place by hand” is gone — you can't pin an address you've never been to —  ◉ I'm standing here: one tap at the door pins it exactly, forever, and every other job at that address gets it too —  an unchecked pin no longer blocks the route; only a ZIP-centre pin does —  fix a misspelt address and it re-looks-up on save —  THE PINS — the lookup was shrinking street names when it should have been spelling them out, searching as one blob, and believing any answer it got —  it now asks the US Census first, asks properly, and checks the answer before saving it —  a guessed pin can no longer plan your drive: it is parked at the end and flagged —  “Fix the pins”: look them all up again, or drop one by hand and keep it —  the road bar — re-route from where you are, from home, start/end, renumber: none of it folds away any more —  “Where I am now” really re-routes, with the alert —  the top bar is alerts only, every one of them tappable —  renumber the papers 1…n after deletes —  fit a job into the drive where it costs the least —  postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 48 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 49 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -1265,7 +1265,7 @@
   // can read the lot at a red light. Tap it and the real thing unfolds.
   function drawStrip() {
     const n = byId("rbNumN"); if (n) n.textContent = String(RS.stops.length);
-    const bad = RS.stops.filter(pinBad).length;
+    const bad = RS.stops.filter(pinUseless).length;
     const pb = byId("rbPins");
     if (pb) {
       pb.hidden = !bad;
@@ -1285,14 +1285,14 @@
     const soon = RS.stops.filter((x) => { const d = daysLeft(x); return d === 1; }).length;
     const again = RS.stops.filter(isRetry).length;
     const biz = RS.stops.filter((x) => x.is_business).length;
-    const badPins = RS.stops.filter(pinBad).length;
+    const badPins = RS.stops.filter(pinUseless).length;
     const chips = [
       rush ? `<span class="sc hot" data-jump="rush">⚡ ${rush} rush</span>` : "",
       due ? `<span class="sc hot" data-jump="due">⏰ ${due} due today</span>` : "",
       soon ? `<span class="sc warm" data-jump="due">⏰ ${soon} due tomorrow</span>` : "",
       again ? `<span class="sc warm" data-jump="again">🔁 ${again} re-tr${again === 1 ? "y" : "ies"}</span>` : "",
       biz && !businessHoursNow() ? `<span class="sc warm" data-jump="biz">🏢 ${biz} business · closed now</span>` : "",
-      badPins ? `<span class="sc hot" data-jump="rough">📍 ${badPins} unconfirmed pin${badPins === 1 ? "" : "s"}</span>` : ""
+      badPins ? `<span class="sc hot" data-jump="rough">📍 ${badPins} pin${badPins === 1 ? "" : "s"} can't be used</span>` : ""
     ].filter(Boolean).join("");
     const clear = !chips;
     // "Stop 49 of 41" is nonsense, and it is what she saw. The paper number and
@@ -1477,7 +1477,7 @@
     onMap.forEach(({ j, i }) => {
       if (j.lat == null) return;
       const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
-      const stacked = tally[key] > 1 || pinBad(j);
+      const stacked = tally[key] > 1 || pinUseless(j);
       j.geoVague = stacked;
       if (stacked) vague++;
       const n = (seen[key] = (seen[key] || 0) + 1);
@@ -1531,7 +1531,7 @@
       const off = onMap.length - pts.length;
       const bits = [];
       if (off) bits.push(`<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map</b> — tap <b>Find missing pins</b>.`);
-      const bad = RS.stops.filter(pinBad).length;
+      const bad = RS.stops.filter(pinUseless).length;
       if (bad) bits.push(`<b class="bad">${bad} pin${bad === 1 ? " isn't" : "s aren't"} confirmed</b> — those are the hollow ones. They're left out of the gas sort and parked at the end, so they can't drag your drive sideways. Tap <b>Fix the pins</b> to sort them.`);
       if (!bits.length) bits.push(`All ${onMap.length} stop${onMap.length === 1 ? " is" : "s are"} on the map, each at its own address.`);
       if (RS.filter !== "all") bits.unshift(`<b>This map is your ${J().esc(mf.short)} run.</b>`);
@@ -1546,6 +1546,20 @@
   //  exactly where the door is, by hand, once — and have it stay there.
   // ---------------------------------------------------------------
   const PIN = { map: null, job: null, at: null };
+
+  // The same door turns up again and again — two people at one address, or a
+  // repeat for the same client. Once ONE job there has a real pin, every other
+  // job at that address can use it: no lookup, no waiting, no guessing.
+  const addrSlug = (a) => String(a || "").toLowerCase()
+    .replace(/,?\s*\b(apt|apartment|unit|ste|suite|lot|bldg|rm|room|#)\s*\.?\s*[\w-]+/ig, "")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+  function pinFromTwin(j) {
+    const k = addrSlug(j.address);
+    if (!k) return null;
+    const twin = (RS.all || []).find((x) => x.id !== j.id && x.lat != null
+      && x.geo_quality && x.geo_quality !== "rough" && addrSlug(x.address) === k);
+    return twin ? { lat: twin.lat, lng: twin.lng, quality: twin.geo_quality } : null;
+  }
   async function drawFixPins() {
     const { esc } = J();
     const bad = RS.stops.filter(pinBad);
@@ -1563,16 +1577,18 @@
           <div class="fp-why">${esc(why)}</div>
         </div>
         <div class="fp-btns">
-          <button class="btn ghost thin" data-one="${j.id}">Look up</button>
-          <button class="btn ghost thin" data-hand="${j.id}">📍 Place by hand</button>
+          <button class="btn ghost thin" data-one="${j.id}">🔍 Look up again</button>
+          <a class="btn ghost thin" href="https://maps.apple.com/?q=${encodeURIComponent(j.address || '')}" target="_blank" rel="noopener">🗺 Check in Maps</a>
+          <button class="btn ghost thin" data-addr="${j.id}">✎ Fix the address</button>
         </div>
       </div>`;
     };
     back.innerHTML = `<div class="sheet fixpins" role="dialog" aria-modal="true" aria-labelledby="fpT">
       <h2 id="fpT">Fix the pins</h2>
-      <p class="muted">The drive order is worked out from the pins. A pin that's only the middle of a ZIP code isn't a place — so those are left out of the gas sort and parked at the end until you fix them.</p>
+      <p class="muted">The drive order is worked out from the pins. A pin that's only the middle of a ZIP code isn't a place, so those are kept out of the gas sort.</p>
+      <p class="muted"><b>You don't need to know where any of these are.</b> Tap <b>Look up again</b> first. If one still won't resolve, tap <b>Check in Maps</b> — if Apple finds it, the address is good and our lookup is at fault; if Apple can't find it either, the address itself is wrong, so <b>Fix the address</b>. And every stop you actually drive to gets pinned exactly when you tap <b>◉ I'm standing here</b> on it.</p>
       <div class="fp-sum">
-        <b>${RS.stops.filter(pinOK).length}</b> confirmed · <b class="bad">${bad.length}</b> to fix
+        <b>${RS.stops.filter((x) => !pinUseless(x)).length}</b> usable for the drive · <b class="bad">${RS.stops.filter(pinUseless).length}</b> can't be used · <b>${bad.length}</b> worth checking
       </div>
       <button class="btn go wide" id="fpAll" ${bad.length ? "" : "disabled"}>Look all ${bad.length} up again</button>
       <p class="muted small center">About a second each — ${bad.length} will take roughly ${Math.ceil(bad.length * 2.5 / 60)} minute${Math.ceil(bad.length * 2.5 / 60) === 1 ? "" : "s"}. Leave this open while it runs.</p>
@@ -1583,7 +1599,7 @@
     byId("fpClose").onclick = () => { back.hidden = true; back.innerHTML = ""; loadStops(); };
     byId("fpAll").onclick = () => runLookups(bad);
     back.querySelectorAll("[data-one]").forEach((b) => b.onclick = () => runLookups([RS.stops.find((x) => x.id === b.dataset.one)]));
-    back.querySelectorAll("[data-hand]").forEach((b) => b.onclick = () => placeByHand(RS.stops.find((x) => x.id === b.dataset.hand)));
+    back.querySelectorAll("[data-addr]").forEach((b) => b.onclick = () => editAddress(RS.stops.find((x) => x.id === b.dataset.addr)));
   }
 
   async function runLookups(list) {
@@ -1594,7 +1610,10 @@
     for (let i = 0; i < jobs.length; i++) {
       const j = jobs[i];
       if (prog) prog.innerHTML = `<div class="fp-prog">Looking up ${i + 1} of ${jobs.length} — ${J().esc(j.person || j.address || "")}</div>`;
-      const pt = await geocode(j.address);
+      // already pinned this exact door on another job? use it, free and instant
+      const twin = pinFromTwin(j);
+      let pt = twin ? { lat: twin.lat, lng: twin.lng, quality: twin.quality, approx: false } : null;
+      if (!pt) pt = await geocode(j.address);
       if (pt) {
         j.lat = pt.lat; j.lng = pt.lng; j.geo_quality = pt.quality; j.geoApprox = pt.approx;
         await updateJob(j.id, { lat: pt.lat, lng: pt.lng, geo_quality: pt.quality });
@@ -1614,51 +1633,34 @@
     J().toast(`${fixed} pin${fixed === 1 ? "" : "s"} fixed${still ? ` · ${still} to place by hand` : ""}`);
   }
 
-  // Drop the pin yourself. One tap on the map, and it's saved as exact.
-  function placeByHand(j) {
+  // The client typed "Mermorial Highway". No lookup on earth will find that,
+  // and nothing else can be fixed until the address itself is right.
+  function editAddress(j) {
     if (!j) return;
     const { esc } = J();
     const back = byId("sheetBack");
-    PIN.job = j; PIN.at = null;
     back.innerHTML = `<div class="sheet fixpins" role="dialog" aria-modal="true">
-      <h2>Place this pin</h2>
-      <div class="fp-head"><b>${esc(j.person || "(no name)")}</b><br>${esc(j.address || "")}</div>
-      <p class="muted small">Zoom in and tap the door. Pinch to zoom. This is saved as the real spot and the lookup will never overwrite it.</p>
-      <div id="pinMap" class="pin-map"></div>
-      <p class="fp-chosen" id="pinAt">Nothing picked yet</p>
+      <h2>Fix the address</h2>
+      <div class="fp-head"><b>${esc(j.person || "(no name)")}</b>${j.job_no ? ` &middot; #${esc(j.job_no)}` : ""}</div>
+      <p class="muted small">This is what the client sent. Typos in it are the usual reason a stop can't be found — misspelt street names, a missing city, no ZIP.</p>
+      <label class="sr" for="eaIn">Address</label>
+      <textarea id="eaIn" class="ea-in" rows="3">${esc(j.address || "")}</textarea>
+      <p class="muted small">Tip: open <b>Check in Maps</b> first and copy how Apple spells it.</p>
       <div class="sheet-btns">
-        <button class="btn ghost" id="pinCancel">Go back</button>
-        <button class="btn go" id="pinSave" disabled>Save this spot</button>
+        <button class="btn ghost" id="eaCancel">Go back</button>
+        <button class="btn go" id="eaSave">Save and look it up</button>
       </div>
     </div>`;
-    byId("pinCancel").onclick = () => { if (PIN.map) { PIN.map.remove(); PIN.map = null; } drawFixPins(); };
-    const startAt = j.lat != null ? [j.lat, j.lng] : [HOME_FALLBACK.lat, HOME_FALLBACK.lng];
-    if (!window.L) { byId("pinMap").innerHTML = `<p class="muted center">Map couldn't load.</p>`; return; }
-    setTimeout(() => {
-      if (PIN.map) { PIN.map.remove(); PIN.map = null; }
-      const map = L.map("pinMap", { zoomControl: true }).setView(startAt, j.lat != null ? 15 : 12);
-      PIN.map = map;
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "soft-tiles",
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
-      let marker = null;
-      map.on("click", (e) => {
-        PIN.at = { lat: e.latlng.lat, lng: e.latlng.lng };
-        if (marker) map.removeLayer(marker);
-        marker = L.marker([PIN.at.lat, PIN.at.lng], {
-          icon: L.divIcon({ className: "pin ping", html: `<i></i><span>HERE</span>`, iconSize: [64, 64], iconAnchor: [32, 32] })
-        }).addTo(map);
-        byId("pinAt").textContent = `Picked: ${PIN.at.lat.toFixed(5)}, ${PIN.at.lng.toFixed(5)}`;
-        byId("pinSave").disabled = false;
-      });
-      setTimeout(() => map.invalidateSize(), 200);
-    }, 60);
-    byId("pinSave").onclick = async () => {
-      if (!PIN.at) return;
-      const ok = await updateJob(j.id, { lat: PIN.at.lat, lng: PIN.at.lng, geo_quality: "exact" });
-      if (!ok) return;
-      j.lat = PIN.at.lat; j.lng = PIN.at.lng; j.geo_quality = "exact"; j.geoApprox = false;
-      if (PIN.map) { PIN.map.remove(); PIN.map = null; }
-      J().toast("Pin saved — that's the real spot now");
+    byId("eaCancel").onclick = () => drawFixPins();
+    byId("eaSave").onclick = async () => {
+      const v = byId("eaIn").value.trim();
+      if (!v) { J().toast("Put an address in first"); return; }
+      byId("eaSave").disabled = true;
+      byId("eaSave").textContent = "Looking it up…";
+      const county = (P() && P().countyFor && P().countyFor(v)) || j.county;
+      if (!(await updateJob(j.id, { address: v, county: county || j.county, lat: null, lng: null, geo_quality: null }))) { drawFixPins(); return; }
+      j.address = v; j.lat = null; j.lng = null; j.geo_quality = null;
+      await runLookups([j]);
       drawFixPins();
     };
   }
@@ -1792,6 +1794,7 @@
             <button class="btn ghost gold grow" data-act="Attempt" data-id="${j.id}">Attempted</button>
             <button class="btn grow" data-act="Non-Serve" data-id="${j.id}">Non-Served</button>
           </div>
+          <button class="btn ghost thin wide pin-here" data-here="${j.id}">◉ I'm standing here — pin this door</button>
           <div class="row-gap skip-row">
             <button class="btn ghost thin grow" data-skip="later" data-id="${j.id}">⤓ Skip — later today</button>
             <button class="btn ghost thin grow" data-skip="off" data-id="${j.id}">📅 Skip — not today</button>
@@ -1846,6 +1849,38 @@
     box.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => move(Number(b.dataset.up), -1));
     box.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => move(Number(b.dataset.down), 1));
     box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openJob(RS.stops.find((j) => j.id === b.dataset.edit), drawRoute));
+    // The surest pin there is: she is standing at the door. One tap and that
+    // address is exact forever — and every other job at the same address
+    // inherits it. This is how the map gets right over time without her ever
+    // having to know where anything is on a map.
+    box.querySelectorAll("[data-here]").forEach((b) => b.onclick = async () => {
+      if (RS.busy) return;
+      const j = RS.stops.find((x) => x.id === b.dataset.here);
+      if (!j) return;
+      RS.busy = true;
+      b.disabled = true; b.textContent = "Finding you\u2026";
+      try {
+        const here = await getHere();
+        if (!here) { J().toast("Couldn't get your location \u2014 check Settings \u2192 Safari \u2192 Location"); return; }
+        const off = j.lat != null ? roadMiles(j, here) : null;
+        if (off != null && off > 3 && !confirm(`That's about ${off.toFixed(1)} miles from where this job is pinned now.\n\nSave where you're standing as this address?`)) return;
+        if (!(await updateJob(j.id, { lat: here.lat, lng: here.lng, geo_quality: "exact" }))) return;
+        j.lat = here.lat; j.lng = here.lng; j.geo_quality = "exact"; j.geoApprox = false; j.geoVague = false;
+        // anything else at this same door gets it too
+        let also = 0;
+        const k = addrSlug(j.address);
+        for (const x of (RS.all || [])) {
+          if (x.id === j.id || addrSlug(x.address) !== k || !k) continue;
+          if (x.geo_quality === "exact") continue;
+          if (await updateJob(x.id, { lat: here.lat, lng: here.lng, geo_quality: "exact" })) {
+            x.lat = here.lat; x.lng = here.lng; x.geo_quality = "exact"; also++;
+          }
+        }
+        RS.here = here;
+        drawStops(); drawMap(); drawStrip();
+        J().toast(`Pinned \u2014 that's the real spot now${also ? ` \u00b7 ${also} other job${also === 1 ? "" : "s"} at this address too` : ""}`);
+      } finally { RS.busy = false; }
+    });
     box.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
       if (RS.busy) return;                       // already saving \u2014 ignore the second tap
       RS.busy = true;
@@ -1894,15 +1929,23 @@
   // not a place, and letting one into the gas sort is what sent her across the
   // county and back. Unknown quality means it was found by the old lookup and
   // has never been checked, so it isn't trusted either.
-  const pinOK = (j) => j.lat != null && (j.geo_quality === "exact" || j.geo_quality === "street");
+  // A pin good enough to plan a drive around. An unchecked pin from the old
+  // lookup still counts — it was usually fine, and refusing to route at all is
+  // worse than routing with an old pin. Only a ZIP-centre pin is genuinely
+  // useless, because it is not a place.
+  const pinOK = (j) => j.lat != null && j.geo_quality !== "rough";
+  // Worth her attention on the Fix screen: no pin, a ZIP-centre pin, or one
+  // that has never been checked by the new lookup.
   const pinBad = (j) => j.lat == null || j.geo_quality === "rough" || !j.geo_quality;
+  // Actually dangerous — these are the ones kept out of the drive order.
+  const pinUseless = (j) => j.lat == null || j.geo_quality === "rough";
   async function optimize(opts) {
     const quiet = opts && opts.quiet;
     // ONLY real pins get to decide the drive. Anything rough or unchecked is
     // parked at the end and called out, instead of quietly dragging the route
     // across the county to the middle of a ZIP code.
-    const withPts = RS.stops.filter(pinOK);
-    const unsure = RS.stops.filter((j) => !pinOK(j));
+    const withPts = RS.stops.filter((j) => !pinUseless(j));
+    const unsure = RS.stops.filter(pinUseless);
     if (withPts.length < 2) {
       if (!quiet) J().toast(unsure.length
         ? `Can't plan a drive \u2014 ${unsure.length} of ${RS.stops.length} stops have no confirmed pin. Tap \u201cFix the pins\u201d first.`

@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 71: Fix the pins —  road bar, tappable alerts, fit-into-drive —  lane controls, full-screen map fix, ZIP box off the phone route —  Big / Detailed phone views —  foldable ZIP box and map, run banner —  quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 72: standing-here pin, address editor —  Fix the pins —  road bar, tappable alerts, fit-into-drive —  lane controls, full-screen map fix, ZIP box off the phone route —  Big / Detailed phone views —  foldable ZIP box and map, run banner —  quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -2039,3 +2039,15 @@ ol.tight li { margin-bottom: 0.15rem; }
   .fp-btns .btn { flex: 1; }
   .fp-list { max-height: none; }
 }
+
+/* pin this door from where you're standing — the only pin that's never wrong */
+.pin-here {
+  border-color: var(--gold) !important; color: var(--gold-text) !important;
+  border-style: dashed !important; font-weight: 800;
+}
+.pin-here:active { background: var(--gold); color: #1F2A44 !important; }
+.ea-in {
+  width: 100%; font-size: 1.05rem; line-height: 1.4; border: 2px solid var(--navy);
+  border-radius: 10px; padding: 0.6rem; font-family: var(--sans); margin: 0.4rem 0;
+}
+.fp-btns .btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
