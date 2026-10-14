@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 43: Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 45: two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 43 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 45 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -576,14 +576,21 @@
     county: localStorage.getItem("jes_route_county") || "Osceola",
     start: localStorage.getItem("jes_route_start") || "here",
     started: false, here: null, watchId: null, dismissed: new Set(),
-    map: null, stops: [], all: [], open: null, vague: 0, filter: "all",
+    map: null, stops: [], all: [], open: null, vague: 0, pool: null,
+    homePt: null, ping: null,
+    // Which run you're driving. Not a filter — the run IS the route.
+    filter: localStorage.getItem("jes_route_run") || "all",
+    // Two phone layouts she switches between: "big" for the field (one stop,
+    // large, map parked at the bottom for reference) and "full" for planning
+    // (every stop, every control). The iPad ignores this entirely.
+    view: localStorage.getItem("jes_route_view") || "big",
     // A job you already knocked on comes back onto the route the next day. If
     // you re-sort from home it lands at the FRONT, because yesterday's attempts
     // are usually the ones closest to the house — so the fresh jobs you've
     // never touched get pushed to the end of the day and sometimes don't
     // happen. "last" keeps retries in gas order but parks them behind
     // everything new. The passing-by alert still pulls one up if you're near it.
-    retry: localStorage.getItem("jes_route_retry") || "last",
+    retry: localStorage.getItem("jes_route_retry") || "mixed",
     mapBig: false, fold: null,
     miles: Number(localStorage.getItem("jes_route_miles") || 0),
     lastPt: JSON.parse(localStorage.getItem("jes_route_lastpt") || "null")
@@ -784,14 +791,21 @@
     // On the phone the whole planning half folds behind one navy strip. Open by
     // default the night before, closed once the route is running — because by
     // then you want the stop you're standing at, not the planning tools.
-    if (RS.fold == null) RS.fold = !RS.started;
+    // Big view exists to put the stop at the top. Opening the planning half
+    // above it would undo the whole thing, so Big starts folded.
+    if (RS.fold == null) RS.fold = RS.view === "big" ? false : !RS.started;
+    const mapShut = localStorage.getItem("jes_map_shut") === "1";
     byId("screen").innerHTML = `
-      <section class="route ${RS.fold ? "fold-open" : ""}" id="rSec">
+      <section class="route ${RS.fold ? "fold-open" : ""} ${mapShut ? "map-shut" : ""} view-${RS.view}" id="rSec">
         <div class="route-head">
           <h1>Today's Route</h1>
           <div class="seg desk-county" id="rCounty">${["Osceola", "Orange"].map((c) => `<button class="${c === RS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
         <div id="rStrip" class="rstrip-wrap"></div>
+        <div class="view-pick" id="rView">
+          <button class="${RS.view === "big" ? "on" : ""}" data-v="big">👁 Big — one stop</button>
+          <button class="${RS.view === "full" ? "on" : ""}" data-v="full">☰ Detailed — everything</button>
+        </div>
         <div class="route-fold">
           <div class="start-from phone-block">
             <span class="sf-label">County</span>
@@ -805,10 +819,12 @@
         <div id="rDid"></div>
         <div class="route-grid">
           <div class="route-mapcol">
+            <button class="map-show" id="rMapShow">🗺 Show the map ▾</button>
             <div class="map-wrap" id="rMapWrap">
               <div id="rMap" class="map" role="img" aria-label="Map of today's stops"></div>
               <button class="map-expand" id="rExpand" aria-label="Open the map full screen">⤢ Full map</button>
               <button class="map-shrink" id="rShrink">‹ Back to the stop</button>
+              <button class="map-hide" id="rMapHide">hide map ▴</button>
             </div>
             <div class="map-extras">
               <div class="start-from">
@@ -854,6 +870,20 @@
       byId("rStart").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       showPoint(RS.start);          // and show me where that is
     };
+    byId("rView").onclick = (e) => {
+      const b = e.target.closest("[data-v]"); if (!b || b.dataset.v === RS.view) return;
+      RS.view = b.dataset.v;
+      localStorage.setItem("jes_route_view", RS.view);
+      const sec = byId("rSec");
+      sec.classList.toggle("view-big", RS.view === "big");
+      sec.classList.toggle("view-full", RS.view === "full");
+      byId("rView").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      if (RS.view === "big" && !RS.hold && !RS.open && RS.stops.length) RS.open = RS.stops[0].id;
+      if (RS.view === "big" && RS.fold) { RS.fold = false; sec.classList.remove("fold-open"); drawStrip(); }
+      drawStops();
+      if (RS.map) setTimeout(() => { RS.map.invalidateSize(); fitMap(); }, 80);
+      J().toast(RS.view === "big" ? "One stop at a time \u00b7 map parked at the bottom" : "The whole list, every control");
+    };
     byId("rRetry").onclick = (e) => {
       const b = e.target.closest("[data-r]"); if (!b || b.dataset.r === RS.retry) return;
       RS.retry = b.dataset.r;
@@ -869,6 +899,15 @@
     // Full-screen map, and back again. Leaflet has to be told the box changed size.
     const resize = () => { if (RS.map) { RS.map.invalidateSize(); fitMap(); } };
     byId("rExpand").onclick = () => { RS.mapBig = true; byId("rSec").classList.add("map-big"); setTimeout(resize, 60); };
+    byId("rMapHide").onclick = () => {
+      localStorage.setItem("jes_map_shut", "1");
+      byId("rSec").classList.add("map-shut");
+    };
+    byId("rMapShow").onclick = () => {
+      localStorage.setItem("jes_map_shut", "0");
+      byId("rSec").classList.remove("map-shut");
+      setTimeout(resize, 60);
+    };
     byId("rShrink").onclick = () => { RS.mapBig = false; byId("rSec").classList.remove("map-big"); setTimeout(resize, 60); };
     // Tap a pin, open that stop — from either map size
     byId("rMapWrap").addEventListener("click", (e) => {
@@ -950,10 +989,20 @@
     const rows = Object.entries(g).sort((a, b) => b[1].n - a[1].n)
       .map(([z, d]) => `<div class="zrow"><b>${esc(z)}</b><span>${esc(d.town)}</span><u>${d.n} stop${d.n > 1 ? "s" : ""}</u></div>`).join("");
     const cash = RS.stops.reduce((a, j) => a + Number(j.price || 0), 0);
-    box.innerHTML = `<div class="zips">
-      <h4>Stops by ZIP</h4>${rows}
-      <div class="ztot"><b>${RS.stops.length} stop${RS.stops.length > 1 ? "s" : ""}</b><u>${money(cash)}</u></div>
+    const shut = localStorage.getItem("jes_zip_shut") === "1";
+    box.innerHTML = `<div class="zips ${shut ? "shut" : ""}" id="rZipBox">
+      <button class="zip-toggle" id="rZipToggle">
+        <span><b>Stops by ZIP</b>${shut ? ` \u00b7 ${Object.keys(g).length} ZIP${Object.keys(g).length === 1 ? "" : "s"} \u00b7 ${RS.stops.length} stop${RS.stops.length === 1 ? "" : "s"} \u00b7 ${money(cash)}` : ""}</span>
+        <u>${shut ? "open \u25BE" : "hide \u25B4"}</u>
+      </button>
+      <div class="zip-body">${rows}
+        <div class="ztot"><b>${RS.stops.length} stop${RS.stops.length > 1 ? "s" : ""}</b><u>${money(cash)}</u></div>
+      </div>
     </div>`;
+    byId("rZipToggle").onclick = () => {
+      localStorage.setItem("jes_zip_shut", shut ? "0" : "1");
+      drawZipLedger();
+    };
   }
 
   // Whether "Save for the end" is a good idea depends entirely on how many of
@@ -1038,10 +1087,13 @@
     const rows = rest.map((x, k) => {
       const prev = run[k];
       const d = (prev.lat != null && x.lat != null) ? roadMiles(prev, x).toFixed(1) + " mi" : "\u2014";
-      return `<div><b>${stopNo(x, from + k + 1)}</b> ${esc((x.address || "").split(",")[0] || "no address")}
-        ${isRetry(x) ? `<em class="nx-again">\u{1F501}</em>` : ""}<u>${d}</u></div>`;
+      return `<button class="nx-row" data-open-stop="${x.id}"><b>${stopNo(x, from + k + 1)}</b>
+        <span>${esc(x.person || "(no name)")}<i>${esc((x.address || "").split(",")[0] || "no address")}</i></span>
+        ${isRetry(x) ? `<em class="nx-again">\u{1F501}</em>` : ""}<u>${d}</u></button>`;
     }).join("");
-    return `<div class="nextup phone-block"><h4>Coming up</h4>${rows}</div>`;
+    const left = RS.stops.length - (from + 1);
+    return `<div class="nextup phone-block"><h4>Coming up \u00b7 tap one to jump to it</h4>${rows}
+      ${left > rows.length ? `<p class="nx-more">${left} stop${left === 1 ? "" : "s"} left in this run</p>` : ""}</div>`;
   }
   function drawNextUp() { computeNext(); }
 
@@ -1055,7 +1107,7 @@
     const inCounty = today.filter(sameCounty);
     const noCounty = inCounty.filter((j) => !j.county);
     const noAddr = inCounty.filter(needsAddress);
-    RS.stops = inCounty.filter((j) => !needsAddress(j))
+    RS.pool = inCounty.filter((j) => !needsAddress(j))
       // Gas order rules the route. Deadlines show up in red instead of
       // jumping the line — you'll drive the whole route today anyway.
       // Retries sit behind anything you've never knocked on, unless a saved
@@ -1063,6 +1115,8 @@
       .sort((a, b) => (a.route_order ?? 999) - (b.route_order ?? 999)
         || (RS.retry === "last" ? (isRetry(a) ? 1 : 0) - (isRetry(b) ? 1 : 0) : 0)
         || rank(a) - rank(b));
+    RS.stops = RS.pool;
+    applyRun();                      // a run is the route, not a filter
     const otherCounty = today.filter((j) => j.county && j.county !== RS.county).length;
 
     const msgs = [];
@@ -1146,7 +1200,7 @@
     // other and look like a single correct pin. Now they fan out and say so.
     computeNext();
     const mf = stopFilter();
-    const onMap = RS.stops.map((j, i) => ({ j, i })).filter(({ j }) => mf.test(j));
+    const onMap = RS.stops.map((j, i) => ({ j, i }));
     const tally = {};
     onMap.forEach(({ j }) => {
       if (j.lat == null) return;
@@ -1214,7 +1268,7 @@
       if (off) bits.push(`<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map</b> — tap <b>Find missing pins</b>.`);
       if (RS.vague) bits.push(`<b class="bad">${RS.vague} pin${RS.vague === 1 ? " is" : "s are"} a rough guess</b> — the lookup couldn't find the street and used the middle of the ZIP instead. Those are the hollow pins. Don't trust them to navigate, and don't trust the drive order around them.`);
       if (!bits.length) bits.push(`All ${onMap.length} stop${onMap.length === 1 ? " is" : "s are"} on the map, each at its own address.`);
-      if (RS.filter !== "all") bits.unshift(`<b>Map is showing the ${J().esc(mf.label.replace(/^\S+\s/, "").toLowerCase())} only.</b>`);
+      if (RS.filter !== "all") bits.unshift(`<b>This map is your ${J().esc(mf.short)} run.</b>`);
       tag.innerHTML = bits.join(" ");
     }
   }
@@ -1242,14 +1296,26 @@
   // Postings and business serves arrive in clusters and you'd rather clear a
   // whole cluster than hop between them. These only change what's SHOWN — the
   // drive order, the paper numbers and the route itself are untouched.
+  // A run is a separate drive, not a filter. 15 postings mixed into 30 personal
+  // serves is what sent her up and down the county. Pick a run and it becomes
+  // today's route outright: the order, the paper numbers, the map, the miles and
+  // the whole list are that run only. The rest sit parked until you switch back.
+  const isPost = (j) => /day\s*post/i.test(j.job_type || "") || /post/i.test(j.service || "");
   const STOP_FILTERS = [
-    { id: "all",  label: "All stops",   test: () => true },
-    { id: "post", label: "📌 Postings", test: (j) => /day\s*post/i.test(j.job_type || "") },
-    { id: "biz",  label: "🏢 Business", test: (j) => !!j.is_business },
-    { id: "due",  label: "⏰ Due soon",  test: (j) => { const d = daysLeft(j); return d != null && d <= 1; } },
-    { id: "rush", label: "⚡ Rush",      test: (j) => j.service === "Rush" }
+    { id: "all",  label: "Everything",        short: "everything", test: () => true },
+    { id: "post", label: "📌 Postings",      short: "postings",   test: isPost },
+    { id: "serve",label: "🚪 Personal serves", short: "personal serves", test: (j) => !isPost(j) && !j.is_business },
+    { id: "biz",  label: "🏢 Business",      short: "business serves", test: (j) => !!j.is_business },
+    { id: "rush", label: "⚡ Rush",            short: "rush jobs",  test: (j) => j.service === "Rush" },
+    { id: "due",  label: "⏰ Due soon",        short: "jobs due",   test: (j) => { const d = daysLeft(j); return d != null && d <= 1; } }
   ];
   const stopFilter = () => STOP_FILTERS.find((f) => f.id === RS.filter) || STOP_FILTERS[0];
+  // Narrow the day's stops down to the run you're actually driving.
+  function applyRun() {
+    RS.pool = RS.pool || RS.stops;
+    RS.stops = RS.pool.filter(stopFilter().test);
+    if (RS.open && !RS.stops.some((x) => x.id === RS.open)) RS.open = null;
+  }
 
   function drawStops() {
     const { esc } = J();
@@ -1262,16 +1328,19 @@
     // default, but tapping any card opens it — for when you cut the line.
     if (RS.open && !RS.stops.some((s) => s.id === RS.open)) RS.open = null;
     const f = stopFilter();
-    const shown = RS.stops.map((j, i) => ({ j, i })).filter(({ j }) => f.test(j));
+    const pool = RS.pool || RS.stops;
+    const shown = RS.stops.map((j, i) => ({ j, i }));
     const chips = `<div class="stop-filters" id="rFilter">${STOP_FILTERS.map((x) => {
-      const n = RS.stops.filter(x.test).length;
+      const n = pool.filter(x.test).length;
       return `<button class="sf-chip ${x.id === RS.filter ? "on" : ""} ${n ? "" : "empty"}" data-f="${x.id}">${x.label} <b>${n}</b></button>`;
     }).join("")}</div>` +
       (RS.filter !== "all"
-        ? `<p class="sf-note">Showing <b>${shown.length}</b> of ${RS.stops.length} stops — ${esc(f.label.replace(/^\S+\s/, "").toLowerCase())} only. Everything else is still on the route.${RS.filter === "biz" ? `<br><b>${businessHoursNow() ? "You're inside registered-agent hours right now (10–12, 2–4)." : "It's outside registered-agent hours (10–12, 2–4) — these won't take."}</b>` : ""}</p>`
+        ? `<p class="sf-note run"><b>You're driving the ${esc(f.short)} — ${RS.stops.length} stop${RS.stops.length === 1 ? "" : "s"}.</b>
+            The other ${pool.length - RS.stops.length} job${pool.length - RS.stops.length === 1 ? " is" : "s are"} parked, not lost — tap <b>Everything</b> to bring them back.
+            Re-sort now and it plans this run on its own.${RS.filter === "biz" ? `<br><b>${businessHoursNow() ? "You're inside registered-agent hours right now (10–12, 2–4)." : "It's outside registered-agent hours (10–12, 2–4) — these won't take."}</b>` : ""}</p>`
         : "");
     if (!shown.length) {
-      box.innerHTML = chips + `<div class="card center"><b>Nothing matches that.</b><p class="muted">Tap <b>All stops</b> to see the whole run again.</p></div>`;
+      box.innerHTML = chips + `<div class="card center"><b>Nothing in that run today.</b><p class="muted">Tap <b>Everything</b> to see the whole day again.</p></div>`;
       wireFilter();
       return;
     }
@@ -1367,7 +1436,11 @@
       J().toast("Off today's route — back in Ready to route, no attempt logged");
     });
     box.querySelectorAll("[data-open-stop]").forEach((el) => {
-      const open = () => { RS.hold = false; RS.open = el.dataset.openStop; drawStops(); };
+      const open = () => {
+        RS.hold = false; RS.open = el.dataset.openStop; drawStops(); drawMap();
+        const c = box.querySelector(".stop.current");
+        if (c) c.scrollIntoView({ block: "start", behavior: "smooth" });
+      };
       el.onclick = (e) => { if (e.target.closest(".move")) return; open(); };
       el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
     });
@@ -1581,8 +1654,15 @@
       const b = e.target.closest("[data-f]");
       if (!b) return;
       RS.filter = b.dataset.f;
-      RS.open = null;
-      drawStops(); drawMap();
+      RS.open = null; RS.hold = false;
+      localStorage.setItem("jes_route_run", RS.filter);
+      applyRun();
+      drawStops(); drawMap(); drawZipLedger(); drawRetryNote(); drawStrip(); drawNextUp();
+      const f = stopFilter();
+      J().toast(RS.filter === "all"
+        ? `Back to the whole day \u2014 ${RS.stops.length} stops`
+        : `Driving the ${f.short} \u2014 ${RS.stops.length} stop${RS.stops.length === 1 ? "" : "s"} \u00b7 tap Re-sort to plan it`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     };
   }
 
