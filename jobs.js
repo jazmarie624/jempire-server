@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 46: postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 47: the road bar — re-route from where you are, from home, start/end, renumber: none of it folds away any more —  “Where I am now” really re-routes, with the alert —  the top bar is alerts only, every one of them tappable —  renumber the papers 1…n after deletes —  fit a job into the drive where it costs the least —  postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 46 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 47 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -655,6 +655,38 @@
     J().toast(which === "here" ? "You're the flashing gold ring \u2713" : "Home is the flashing gold ring \u2713");
   }
 
+  // The whole point of "Where I am now" out on the road: not a preference, a
+  // re-route. It finds you, drops the gold ring, and rebuilds the remaining run
+  // from that spot — renumbering the papers so the stack matches again.
+  async function rerouteFrom(which) {
+    if (RS.busy) return;
+    RS.busy = true;
+    try {
+      J().toast(which === "here" ? "Finding you\u2026" : "Finding home\u2026");
+      let pt = null;
+      if (which === "here") { pt = await getHere(); if (pt) RS.here = pt; }
+      else { pt = await housePoint(); if (pt) RS.homePt = pt; }
+      if (!pt) {
+        J().toast(which === "here"
+          ? "Couldn't get your location \u2014 check Settings \u2192 Safari \u2192 Location"
+          : "Couldn't find your home address \u2014 set it on the Home screen");
+        return;
+      }
+      RS.start = which;
+      localStorage.setItem("jes_route_start", which);
+      RS.ping = { lat: pt.lat, lng: pt.lng, kind: which };
+      J().toast(which === "here" ? "Re-routing to your new current location\u2026" : "Re-routing from home\u2026");
+      if (RS.stops.filter((x) => x.lat != null).length < 2) {
+        drawMap();
+        if (RS.map) RS.map.setView([pt.lat, pt.lng], 14, { animate: true });
+        J().toast("Not enough stops with pins to re-route");
+        return;
+      }
+      await optimize({ from: pt, label: which === "here" ? "Re-routed from where you are" : "Re-routed from home" });
+      if (RS.map) RS.map.setView([pt.lat, pt.lng], 13, { animate: true });
+    } finally { RS.busy = false; }
+  }
+
   function stopWatch() { if (RS.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(RS.watchId); RS.watchId = null; }
   function startWatch() {
     stopWatch();
@@ -825,6 +857,17 @@
           <button class="${RS.view === "big" ? "on" : ""}" data-v="big">👁 Big — one stop</button>
           <button class="${RS.view === "full" ? "on" : ""}" data-v="full">☰ Detailed — everything</button>
         </div>
+        <div class="road-bar" id="rRoad">
+          <button class="rb big" id="rbHere">📍 Re-route from where I am</button>
+          <div class="rb-row">
+            <button class="rb" id="rbHome">🏠 From home</button>
+            ${RS.started
+              ? `<button class="rb stop" id="rbEnd">■ End route</button>`
+              : `<button class="rb go" id="rbGo">▶ Start route</button>`}
+            <button class="rb" id="rbMore">⚙ More</button>
+          </div>
+          <button class="rb thin" id="rbNum">🔢 Renumber the papers 1–<span id="rbNumN">0</span></button>
+        </div>
         <div class="route-fold">
           <div class="start-from phone-block">
             <span class="sf-label">County</span>
@@ -888,6 +931,27 @@
       localStorage.setItem("jes_route_start", RS.start);
       byId("rStart").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       showPoint(RS.start);          // and show me where that is
+    };
+    byId("rbHere").onclick = () => rerouteFrom("here");
+    byId("rbHome").onclick = () => rerouteFrom("home");
+    if (byId("rbGo")) byId("rbGo").onclick = startRoute;
+    if (byId("rbEnd")) byId("rbEnd").onclick = endRoute;
+    byId("rbMore").onclick = () => {
+      RS.fold = !RS.fold;
+      byId("rSec").classList.toggle("fold-open", RS.fold);
+      drawStrip();
+      if (RS.fold) setTimeout(() => {
+        const ex = document.querySelector(".map-extras");
+        if (ex) ex.scrollIntoView({ block: "start", behavior: "smooth" });
+      }, 80);
+      if (RS.map) setTimeout(() => { RS.map.invalidateSize(); fitMap(); }, 120);
+    };
+    byId("rbNum").onclick = async () => {
+      if (!RS.stops.length) { J().toast("No stops to number"); return; }
+      if (!confirm(`Write fresh numbers 1 to ${RS.stops.length} on today's papers?\n\nThis is the drive order you have now. Any numbers already on your sticky notes will be wrong after this.`)) return;
+      await numberPapers(true);
+      drawStops(); drawMap(); drawStrip();
+      J().toast(`Papers renumbered 1 to ${RS.stops.length}`);
     };
     byId("rView").onclick = (e) => {
       const b = e.target.closest("[data-v]"); if (!b || b.dataset.v === RS.view) return;
@@ -1066,36 +1130,57 @@
   // deadline warning, the rough-pin count and the money, squeezed down so you
   // can read the lot at a red light. Tap it and the real thing unfolds.
   function drawStrip() {
+    const n = byId("rbNumN"); if (n) n.textContent = String(RS.stops.length);
     const box = byId("rStrip"); if (!box) return;
     const { esc, money } = J();
     if (!RS.stops.length) { box.innerHTML = ""; return; }
     const openAt = RS.open ? RS.stops.findIndex((s) => s.id === RS.open) : 0;
     const j = RS.stops[openAt < 0 ? 0 : openAt];
-    const zip = (x) => ((x.address || "").match(/\b(\d{5})(?:-\d{4})?\b/) || [])[1] || "no ZIP";
-    const g = {};
-    RS.stops.forEach((x) => { const z = zip(x); g[z] = (g[z] || 0) + 1; });
-    const zchips = Object.entries(g).sort((a, b) => b[1] - a[1]).slice(0, 4)
-      .map(([z, n]) => `<span class="sc">${esc(z)} · ${n}</span>`).join("");
+    // This bar is for things that need doing. ZIP counts are not an alert — they
+    // belong in Paper check, where the filing happens — and the money on the
+    // windscreen is just noise.
     const rush = RS.stops.filter((x) => x.service === "Rush").length;
     const due = RS.stops.filter((x) => { const d = daysLeft(x); return d != null && d <= 0; }).length;
+    const soon = RS.stops.filter((x) => { const d = daysLeft(x); return d === 1; }).length;
     const again = RS.stops.filter(isRetry).length;
-    const cash = RS.stops.reduce((a, x) => a + Number(x.price || 0), 0);
+    const biz = RS.stops.filter((x) => x.is_business).length;
     const chips = [
-      zchips,
-      rush ? `<span class="sc hot">⚡ ${rush} rush</span>` : "",
-      due ? `<span class="sc hot">⏰ ${due} due</span>` : "",
-      again ? `<span class="sc warm">🔁 ${again} retr${again === 1 ? "y" : "ies"}${RS.retry === "last" ? " at the end" : ""}</span>` : "",
-      RS.vague ? `<span class="sc warm">📍 ${RS.vague} rough</span>` : "",
-      `<span class="sc">${money(cash)}</span>`
+      rush ? `<span class="sc hot" data-jump="rush">⚡ ${rush} rush</span>` : "",
+      due ? `<span class="sc hot" data-jump="due">⏰ ${due} due today</span>` : "",
+      soon ? `<span class="sc warm" data-jump="due">⏰ ${soon} due tomorrow</span>` : "",
+      again ? `<span class="sc warm" data-jump="again">🔁 ${again} re-tr${again === 1 ? "y" : "ies"}</span>` : "",
+      biz && !businessHoursNow() ? `<span class="sc warm" data-jump="biz">🏢 ${biz} business · closed now</span>` : "",
+      RS.vague ? `<span class="sc warm" data-jump="rough">📍 ${RS.vague} rough pin${RS.vague === 1 ? "" : "s"}</span>` : ""
     ].filter(Boolean).join("");
-    box.innerHTML = `<button class="rstrip" id="rStripBtn" aria-expanded="${RS.fold}">
+    const clear = !chips;
+    // "Stop 49 of 41" is nonsense, and it is what she saw. The paper number and
+    // the position in the drive are two different things, so say both.
+    const at = (openAt < 0 ? 0 : openAt) + 1;
+    box.innerHTML = `<button class="rstrip ${clear ? "clear" : ""}" id="rStripBtn" aria-expanded="${RS.fold}">
       <span class="rs-top">
-        <b>Stop ${stopNo(j, openAt < 0 ? 0 : openAt)} of ${RS.stops.length} · ${esc(RS.county)}</b>
+        <b>${at} of ${RS.stops.length} · paper #${stopNo(j, openAt < 0 ? 0 : openAt)} · ${esc(RS.county)}</b>
         <u>${RS.fold ? "close ▴" : "open ▾"}</u>
       </span>
-      <span class="rs-chips">${chips}</span>
+      <span class="rs-chips">${chips || `<span class="sc ok">✓ Nothing needs you — just drive the list</span>`}</span>
     </button>`;
-    byId("rStripBtn").onclick = () => {
+    byId("rStripBtn").onclick = (e) => {
+      // Tap an alert and you land in that group. Tap the bar itself and it folds.
+      const chip = e.target.closest("[data-jump]");
+      if (chip) {
+        e.stopPropagation();
+        const want = chip.dataset.jump;
+        RS.filter = RS.filter === want ? "all" : want;
+        localStorage.setItem("jes_route_run", RS.filter);
+        RS.open = null; RS.hold = false;
+        applyRun();
+        drawStops(); drawMap(); drawZipLedger(); drawRetryNote(); drawStrip(); drawNextUp();
+        const f = stopFilter();
+        J().toast(RS.filter === "all"
+          ? `Back to the whole day \u00b7 ${RS.stops.length} stops`
+          : `${RS.stops.length} ${f.short} \u00b7 tap the same chip again to come back`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       RS.fold = !RS.fold;
       byId("rSec").classList.toggle("fold-open", RS.fold);
       drawStrip();
@@ -1248,6 +1333,7 @@
       if (j.lat == null) return;
       const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
       const stacked = tally[key] > 1;
+      j.geoVague = stacked;
       if (stacked) vague++;
       const n = (seen[key] = (seen[key] || 0) + 1);
       let lat = j.lat, lng = j.lng;
@@ -1346,7 +1432,9 @@
     { id: "serve",label: "🚪 Personal serves", short: "personal serves", test: (j) => !isPost(j) && !j.is_business },
     { id: "biz",  label: "🏢 Business",      short: "business serves", test: (j) => !!j.is_business },
     { id: "rush", label: "⚡ Rush",            short: "rush jobs",  test: (j) => j.service === "Rush" },
-    { id: "due",  label: "⏰ Due soon",        short: "jobs due",   test: (j) => { const d = daysLeft(j); return d != null && d <= 1; } }
+    { id: "due",  label: "⏰ Due soon",        short: "jobs due",   test: (j) => { const d = daysLeft(j); return d != null && d <= 1; } },
+    { id: "again",label: "🔁 Re-tries",        short: "re-tries",   test: (j) => (j.attempt_count || 0) > 0 },
+    { id: "rough",label: "📍 Rough pins",      short: "rough pins", test: (j) => j.lat == null || !!j.geoVague || !!j.geoApprox }
   ];
   const stopFilter = () => STOP_FILTERS.find((f) => f.id === RS.filter) || STOP_FILTERS[0];
   // Narrow the day's stops down to the run you're actually driving.
@@ -1535,7 +1623,7 @@
     const quiet = opts && opts.quiet;
     const withPts = RS.stops.filter((j) => j.lat != null);
     if (withPts.length < 2) { if (!quiet) J().toast("Need at least 2 stops on the map"); if (RS.start === "here") RS.here = await getHere(); return; }
-    const start = await homePoint();
+    const start = (opts && opts.from) || await homePoint();
     let ordered, held = 0;
     if (RS.retry === "last") {
       // Fresh jobs get the whole drive first. Retries are then ordered among
@@ -1556,7 +1644,8 @@
     await numberPapers(true);      // fresh run = a fresh set of sticky notes
     drawStops(); drawMap(); drawZipLedger(); drawRetryNote(); drawStrip(); drawNextUp();
     const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + roadMiles(i ? arr[i - 1] : start, p), 0);
-    if (!quiet) J().toast(`Order set · 1 to ${RS.stops.length} on your papers · about ${total.toFixed(1)} miles of driving`
+    if (!quiet) J().toast(((opts && opts.label) || "Order set")
+      + ` · papers renumbered 1 to ${RS.stops.length} · about ${total.toFixed(1)} miles of driving`
       + (held ? ` · ${held} retr${held === 1 ? "y sits" : "ies sit"} at the end` : ""));
   }
 
@@ -1705,16 +1794,67 @@
     };
   }
 
+  // Where does this job cost the least extra driving? Checks every gap in the
+  // run, including before stop 1 and after the last one, and returns the
+  // cheapest slot plus what the detour actually costs.
+  function bestSlot(j) {
+    if (j.lat == null) return { i: RS.stops.length, cost: null };
+    const from = RS.here || RS.homePt || null;
+    let best = RS.stops.length, bestCost = Infinity;
+    for (let i = 0; i <= RS.stops.length; i++) {
+      const prev = i === 0 ? from : RS.stops[i - 1];
+      const next = RS.stops[i] || null;
+      const a = prev && prev.lat != null ? roadMiles(prev, j) : 0;
+      const b = next && next.lat != null ? roadMiles(j, next) : 0;
+      const skip = prev && next && prev.lat != null && next.lat != null ? roadMiles(prev, next) : 0;
+      const cost = a + b - skip;
+      if (cost < bestCost) { bestCost = cost; best = i; }
+    }
+    return { i: best, cost: bestCost };
+  }
+
+  // Drop a job into today's run at the spot that costs the least driving,
+  // instead of sticking it on the end and making you re-sort everything.
+  async function fitIntoRoute(id) {
+    if (RS.busy) return;
+    const j = RS.all.find((x) => x.id === id);
+    if (!j) return;
+    RS.busy = true;
+    try {
+      if (j.lat == null) {
+        J().toast("Looking up the address\u2026");
+        const pt = await geocode(j.address);
+        if (pt) { j.lat = pt.lat; j.lng = pt.lng; j.geoApprox = pt.approx; await updateJob(j.id, { lat: pt.lat, lng: pt.lng }); }
+      }
+      const slot = bestSlot(j);
+      j.on_today = true;
+      j.lineup_no = nextFreeNo();
+      if (!(await updateJob(j.id, { on_today: true, route_order: slot.i, lineup_no: j.lineup_no }))) return;
+      RS.pool = (RS.pool || []).slice();
+      RS.pool.splice(Math.min(slot.i, RS.pool.length), 0, j);
+      RS.stops.splice(Math.min(slot.i, RS.stops.length), 0, j);
+      await saveOrder();
+      drawStops(); drawMap(); drawZipLedger(); drawStrip(); drawNextUp(); drawAddMore();
+      const where = slot.i === 0 ? "as your next stop" : `after stop ${slot.i}`;
+      J().toast(`${j.person || "Job"} fitted in ${where} \u00b7 paper #${j.lineup_no}`
+        + (slot.cost != null ? ` \u00b7 adds about ${slot.cost.toFixed(1)} mi` : ""));
+    } finally { RS.busy = false; }
+  }
+
   function drawAddMore() {
     const { esc } = J();
     const pool = RS.all.filter((j) => j.status === "Active" && !j.on_today && !j.in_attempts && (j.county === RS.county || !j.county) && !needsAddress(j) && !waitingPapers(j));
     byId("rAddList").innerHTML = pool.length ? pool.map((j) => `
       <div class="add-line">
         <div class="draft-text"><div class="draft-name">${esc(j.person || "(no name yet)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div><div class="draft-addr">${esc(j.address)}</div></div>
-        <button class="today-btn" data-add="${j.id}">+ Add</button>
+        <div class="add-btns">
+          <button class="today-btn fit" data-fit="${j.id}">✧ Fit into today's drive</button>
+          <button class="today-btn" data-add="${j.id}">+ Add to the end</button>
+        </div>
       </div>`).join("") : `<p class="muted small">No other active ${esc(RS.county)} jobs.</p>`;
+    byId("rAddList").querySelectorAll("[data-fit]").forEach((b) => b.onclick = () => fitIntoRoute(b.dataset.fit));
     byId("rAddList").querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
-      if (await updateJob(b.dataset.add, { on_today: true, route_order: null })) { J().toast("Added — tap Re-sort (save gas) to put it in order"); loadStops(); }
+      if (await updateJob(b.dataset.add, { on_today: true, route_order: null })) { J().toast("Added at the end — tap Re-sort to put it in gas order"); loadStops(); }
     });
   }
 

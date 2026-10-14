@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 69: lane controls, full-screen map fix, ZIP box off the phone route —  Big / Detailed phone views —  foldable ZIP box and map, run banner —  quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 70: road bar, tappable alerts, fit-into-drive —  lane controls, full-screen map fix, ZIP box off the phone route —  Big / Detailed phone views —  foldable ZIP box and map, run banner —  quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1954,4 +1954,48 @@ ol.tight li { margin-bottom: 0.15rem; }
 
 @media (max-width: 899px) {
   .lane-btn { flex: 1 1 100%; text-align: left; }
+}
+
+
+/* =====================================================================
+   THE ROAD BAR — the controls that must never fold away.
+   Start route, re-routing from where you are, and renumbering the papers
+   were all inside the fold, which in Big view starts closed. They vanished.
+   This bar sits outside the fold and stays put.
+   ===================================================================== */
+.road-bar { display: none; }
+@media (max-width: 899px) {
+  .road-bar { display: flex; flex-direction: column; gap: 0.35rem; margin: 0 0 0.6rem; }
+  .rb-row { display: flex; gap: 0.35rem; }
+  .rb-row .rb { flex: 1; }
+  .rb {
+    min-height: 50px; padding: 0 0.6rem; border-radius: 11px;
+    background: var(--paper); border: 2px solid var(--navy); color: var(--navy);
+    font-family: var(--sans); font-size: 0.95rem; font-weight: 800; line-height: 1.2;
+  }
+  .rb.big {
+    background: var(--navy); color: #fff; font-size: 1.05rem; min-height: 56px;
+  }
+  .rb.big:active { background: #16203A; }
+  .rb.go { background: var(--green); border-color: var(--green); color: #fff; }
+  .rb.stop { background: var(--red); border-color: var(--red); color: #fff; }
+  .rb.thin {
+    min-height: 42px; font-size: 0.86rem; font-weight: 700;
+    border-style: dashed; border-color: var(--gold); color: var(--gold-text);
+  }
+}
+
+/* the alert bar: every chip is a door into that group */
+.rs-chips .sc[data-jump] { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.rs-chips .sc[data-jump]:active { filter: brightness(1.25); }
+.rs-chips .sc.ok { background: var(--green); color: #fff; }
+.rstrip.clear { background: #24402C; }
+
+/* fitting a job into the drive instead of dumping it on the end */
+.add-btns { display: flex; flex-direction: column; gap: 0.3rem; flex-shrink: 0; }
+.today-btn.fit { background: var(--gold); border-color: var(--gold); color: #1F2A44; font-weight: 800; }
+@media (max-width: 899px) {
+  .add-line { flex-wrap: wrap; }
+  .add-btns { flex-direction: row; width: 100%; }
+  .add-btns .today-btn { flex: 1; }
 }
