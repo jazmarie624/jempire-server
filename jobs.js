@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 47: the road bar — re-route from where you are, from home, start/end, renumber: none of it folds away any more —  “Where I am now” really re-routes, with the alert —  the top bar is alerts only, every one of them tappable —  renumber the papers 1…n after deletes —  fit a job into the drive where it costs the least —  postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 48: THE PINS — the lookup was shrinking street names when it should have been spelling them out, searching as one blob, and believing any answer it got —  it now asks the US Census first, asks properly, and checks the answer before saving it —  a guessed pin can no longer plan your drive: it is parked at the end and flagged —  “Fix the pins”: look them all up again, or drop one by hand and keep it —  the road bar — re-route from where you are, from home, start/end, renumber: none of it folds away any more —  “Where I am now” really re-routes, with the alert —  the top bar is alerts only, every one of them tappable —  renumber the papers 1…n after deletes —  fit a job into the drive where it costs the least —  postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 47 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 48 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -726,33 +726,165 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // Tries the full address, then short forms (S, Pkwy…), then the street, then the ZIP.
-  const ABBR = [[/\bSouth\b/gi, "S"], [/\bNorth\b/gi, "N"], [/\bEast\b/gi, "E"], [/\bWest\b/gi, "W"],
-    [/\bParkway\b/gi, "Pkwy"], [/\bBoulevard\b/gi, "Blvd"], [/\bHighway\b/gi, "Hwy"], [/\bAvenue\b/gi, "Ave"],
-    [/\bStreet\b/gi, "St"], [/\bDrive\b/gi, "Dr"], [/\bRoad\b/gi, "Rd"], [/\bLane\b/gi, "Ln"], [/\bCourt\b/gi, "Ct"],
-    [/\bCircle\b/gi, "Cir"], [/\bTrail\b/gi, "Trl"], [/\bPlace\b/gi, "Pl"]];
-  async function lookup(q) {
+  // ---------------------------------------------------------------
+  //  FINDING THE DOOR
+  //  This was the thing wrecking the drive. Three faults:
+  //   1. It SHRANK street types — Circle became Cir. Her clients already send
+  //      "Cir", "Pkwy", "Ct", and OpenStreetMap stores the full word. So the
+  //      abbreviation never matched anything and the lookup gave up.
+  //   2. It searched as one blob of text instead of street / city / state / ZIP
+  //      as separate fields, which is what the map service is built for.
+  //   3. It accepted whatever came back. A pin in the wrong county became a
+  //      stop on the route with nobody the wiser.
+  //  Now it expands, asks properly, asks the US Census too, and checks the
+  //  answer before it believes it.
+  // ---------------------------------------------------------------
+  const EXPAND = [
+    [/\bCir\b\.?/gi, "Circle"], [/\bCt\b\.?/gi, "Court"], [/\bDr\b\.?/gi, "Drive"],
+    [/\bPkwy\b\.?/gi, "Parkway"], [/\bBlvd\b\.?/gi, "Boulevard"], [/\bHwy\b\.?/gi, "Highway"],
+    [/\bAve\b\.?/gi, "Avenue"], [/\bSt\b\.?(?!\s*\d)/gi, "Street"], [/\bRd\b\.?/gi, "Road"],
+    [/\bLn\b\.?/gi, "Lane"], [/\bTrl\b\.?/gi, "Trail"], [/\bPl\b\.?/gi, "Place"],
+    [/\bTer\b\.?/gi, "Terrace"], [/\bSq\b\.?/gi, "Square"], [/\bCv\b\.?/gi, "Cove"],
+    [/\bBnd\b\.?/gi, "Bend"], [/\bXing\b\.?/gi, "Crossing"], [/\bLoop\b\.?/gi, "Loop"],
+    [/\bPt\b\.?/gi, "Point"], [/\bRdg\b\.?/gi, "Ridge"], [/\bGln\b\.?/gi, "Glen"],
+    [/\bRun\b\.?/gi, "Run"], [/\bWay\b\.?/gi, "Way"], [/\bPark\b\.?/gi, "Park"]
+  ];
+  const DIRS = [[/\bN\b\.?/g, "North"], [/\bS\b\.?/g, "South"], [/\bE\b\.?/g, "East"], [/\bW\b\.?/g, "West"],
+    [/\bNE\b\.?/g, "Northeast"], [/\bNW\b\.?/g, "Northwest"], [/\bSE\b\.?/g, "Southeast"], [/\bSW\b\.?/g, "Southwest"]];
+
+  // Strip the unit off — a geocoder can't place "Apt 105" and it ruins the match
+  // NOTE: "fl" is NOT in this list. Florida's state code is FL, and treating it
+  // as "floor" ate the state and the ZIP off every single address.
+  const UNIT_RE = /,?\s*\b(apt|apartment|unit|ste|suite|lot|bldg|building|rm|room|floor|#)\s*\.?\s*[\w-]+/ig;
+
+  function parseAddr(address) {
+    const raw = String(address || "").trim();
+    const noUnit = raw.replace(UNIT_RE, "");
+    const parts = noUnit.split(",").map((x) => x.trim()).filter(Boolean);
+    const tail = parts[parts.length - 1] || "";
+    const m = tail.match(/\b([A-Z]{2})\s*(\d{5})(?:-\d{4})?\s*$/i);
+    let state = m ? m[1].toUpperCase() : "FL";
+    let zip = m ? m[2] : (noUnit.match(/\b(\d{5})(?:-\d{4})?\b/) || [])[1] || "";
+    let city = "";
+    if (parts.length >= 2) city = (m ? parts[parts.length - 2] : parts[parts.length - 1]) || "";
+    city = city.replace(/\b[A-Z]{2}\s*\d{5}(-\d{4})?\s*$/i, "").trim();
+    let street = parts[0] || "";
+    // some pastes put the whole thing on one line
+    if (parts.length === 1) {
+      const sm = raw.match(/^(.*?)\s+([A-Za-z .'-]+),?\s*([A-Z]{2})\s*(\d{5})/);
+      if (sm) { street = sm[1]; city = sm[2]; state = sm[3]; zip = sm[4]; }
+    }
+    street = street.replace(UNIT_RE, "").replace(/\s+/g, " ").trim();
+    let full = street;
+    EXPAND.forEach(([re, to]) => { full = full.replace(re, to); });
+    let dirFull = full;
+    DIRS.forEach(([re, to]) => { dirFull = dirFull.replace(re, to); });
+    return { raw, street, full, dirFull, city, state, zip };
+  }
+
+  async function nomStructured(a) {
+    const q = new URLSearchParams({ format: "jsonv2", addressdetails: "1", limit: "1", countrycodes: "us" });
+    if (a.full) q.set("street", a.full);
+    if (a.city) q.set("city", a.city);
+    if (a.state) q.set("state", a.state);
+    if (a.zip) q.set("postalcode", a.zip);
     try {
-      const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } });
+      const r = await fetch("https://nominatim.openstreetmap.org/search?" + q.toString(), { headers: { Accept: "application/json" } });
       const d = await r.json();
-      if (d && d[0]) return { lat: Number(d[0].lat), lng: Number(d[0].lon) };
+      if (d && d[0]) {
+        const ad = d[0].address || {};
+        return { lat: Number(d[0].lat), lng: Number(d[0].lon),
+          zip: ad.postcode ? String(ad.postcode).slice(0, 5) : "",
+          house: !!ad.house_number, kind: d[0].addresstype || d[0].type || "" };
+      }
     } catch (e) {}
     return null;
   }
-  async function geocode(address) {
-    const base = address.replace(/,?\s*(apt|unit|ste|suite|lot|bldg|#)\s*[\w-]+/ig, "").replace(/-\d{4}\b/, "");
-    let abbr = base; ABBR.forEach(([re, to]) => { abbr = abbr.replace(re, to); });
-    const noNum = base.replace(/^\d+[A-Za-z]?\s+/, "");
-    const zip = (base.match(/\bFL\s*(\d{5})/i) || [])[1];
-    const tries = [base, abbr, noNum];
-    for (let i = 0; i < tries.length; i++) {
-      if (i && tries[i] === tries[i - 1]) continue;
-      const pt = await lookup(tries[i]);
-      if (pt) { pt.approx = i === 2; return pt; }
-      await sleep(1100);
-    }
-    if (zip) { const pt = await lookup(zip + ", FL"); if (pt) { pt.approx = true; return pt; } }
+  async function nomFree(q) {
+    try {
+      const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&q=" + encodeURIComponent(q), { headers: { Accept: "application/json" } });
+      const d = await r.json();
+      if (d && d[0]) {
+        const ad = d[0].address || {};
+        return { lat: Number(d[0].lat), lng: Number(d[0].lon),
+          zip: ad.postcode ? String(ad.postcode).slice(0, 5) : "",
+          house: !!ad.house_number, kind: d[0].addresstype || d[0].type || "" };
+      }
+    } catch (e) {}
     return null;
   }
+  // The US Census geocoder is free, needs no key, and is built for exactly this
+  // — American street addresses. When it answers, it's usually the real door.
+  async function censusLookup(a) {
+    const one = [a.full, a.city, a.state, a.zip].filter(Boolean).join(", ");
+    const url = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" + encodeURIComponent(one);
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+      const hit = d && d.result && d.result.addressMatches && d.result.addressMatches[0];
+      if (hit && hit.coordinates) {
+        return { lat: Number(hit.coordinates.y), lng: Number(hit.coordinates.x),
+          zip: (hit.addressComponents && hit.addressComponents.zip) || "", house: true, kind: "census" };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  // Believe a result only if it lands where it should. A pin in the wrong ZIP,
+  // or an hour outside the counties she works, is worse than no pin at all.
+  function plausible(pt, a) {
+    if (!pt || !isFinite(pt.lat) || !isFinite(pt.lng)) return false;
+    let home = HOME_FALLBACK;
+    try { const c = JSON.parse(localStorage.getItem("jes_home_ll") || "null"); if (c) home = c; } catch (e) {}
+    if (miles(home, pt) > 90) return false;                 // not in her circuit
+    if (a.zip && pt.zip && pt.zip !== a.zip) return false;   // wrong ZIP outright
+    return true;
+  }
+
+  // quality: "exact" = the door · "street" = right street, no number ·
+  //          "rough" = middle of the ZIP, do not trust it to navigate
+  async function geocode(address) {
+    const a = parseAddr(address);
+    if (!a.street && !a.zip) return null;
+
+    // 1. the Census, which knows house numbers
+    let pt = await censusLookup(a);
+    if (pt && plausible(pt, a)) return { lat: pt.lat, lng: pt.lng, quality: "exact", approx: false };
+
+    // 2. the map service, asked properly
+    await sleep(900);
+    pt = await nomStructured(a);
+    if (pt && plausible(pt, a)) return { lat: pt.lat, lng: pt.lng, quality: pt.house ? "exact" : "street", approx: !pt.house };
+
+    // 3. the same thing spelled out in full, in case the street type was the problem
+    if (a.dirFull !== a.full) {
+      await sleep(900);
+      pt = await nomFree([a.dirFull, a.city, a.state, a.zip].filter(Boolean).join(", "));
+      if (pt && plausible(pt, a)) return { lat: pt.lat, lng: pt.lng, quality: pt.house ? "exact" : "street", approx: !pt.house };
+    }
+
+    // 4. exactly as it was written
+    await sleep(900);
+    pt = await nomFree(a.raw.replace(UNIT_RE, ""));
+    if (pt && plausible(pt, a)) return { lat: pt.lat, lng: pt.lng, quality: pt.house ? "exact" : "street", approx: !pt.house };
+
+    // 5. the street without the house number — right road, wrong door
+    const noNum = a.full.replace(/^\d+[A-Za-z]?\s+/, "");
+    if (noNum && noNum !== a.full) {
+      await sleep(900);
+      pt = await nomFree([noNum, a.city, a.state, a.zip].filter(Boolean).join(", "));
+      if (pt && plausible(pt, a)) return { lat: pt.lat, lng: pt.lng, quality: "street", approx: true };
+    }
+
+    // 6. give up and say so. This pin is the middle of the ZIP and nothing more.
+    if (a.zip) {
+      await sleep(900);
+      pt = await nomFree(a.zip + ", " + (a.state || "FL"));
+      if (pt) return { lat: pt.lat, lng: pt.lng, quality: "rough", approx: true };
+    }
+    return null;
+  }
+
   // The house itself, whatever "Start from" is set to.
   async function housePoint() {
     try { const c = JSON.parse(localStorage.getItem("jes_home_ll") || "null"); if (c) return c; } catch (e) {}
@@ -867,6 +999,7 @@
             <button class="rb" id="rbMore">⚙ More</button>
           </div>
           <button class="rb thin" id="rbNum">🔢 Renumber the papers 1–<span id="rbNumN">0</span></button>
+          <button class="rb warn" id="rbPins" hidden>📍 Fix <span id="rbPinsN">0</span> unconfirmed pin<span id="rbPinsS"></span></button>
         </div>
         <div class="route-fold">
           <div class="start-from phone-block">
@@ -906,7 +1039,7 @@
                 <button class="btn ghost" id="rLine">📋 Lineup</button>
                 <button class="btn ghost" id="rPrint">Print</button>
                 <button class="btn ghost" id="rWhere">📍 Where am I</button>
-                <button class="btn ghost" id="rPins">Find missing pins</button>
+                <button class="btn ghost" id="rPins">📍 Fix the pins</button>
               </div>
               <p class="map-count" id="rMapCount"></p>
             </div>
@@ -932,6 +1065,7 @@
       byId("rStart").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       showPoint(RS.start);          // and show me where that is
     };
+    byId("rbPins").onclick = () => drawFixPins();
     byId("rbHere").onclick = () => rerouteFrom("here");
     byId("rbHome").onclick = () => rerouteFrom("home");
     if (byId("rbGo")) byId("rbGo").onclick = startRoute;
@@ -978,7 +1112,7 @@
         : "One gas order for everything — tap Re-sort to apply it");
     };
     byId("rBest").onclick = () => optimize();
-    byId("rPins").onclick = () => findMissingPins();
+    byId("rPins").onclick = () => drawFixPins();
     // Full-screen map, and back again. Leaflet has to be told the box changed size.
     const resize = () => { if (RS.map) { RS.map.invalidateSize(); fitMap(); } };
     byId("rExpand").onclick = () => {
@@ -1131,6 +1265,13 @@
   // can read the lot at a red light. Tap it and the real thing unfolds.
   function drawStrip() {
     const n = byId("rbNumN"); if (n) n.textContent = String(RS.stops.length);
+    const bad = RS.stops.filter(pinBad).length;
+    const pb = byId("rbPins");
+    if (pb) {
+      pb.hidden = !bad;
+      byId("rbPinsN").textContent = String(bad);
+      byId("rbPinsS").textContent = bad === 1 ? "" : "s";
+    }
     const box = byId("rStrip"); if (!box) return;
     const { esc, money } = J();
     if (!RS.stops.length) { box.innerHTML = ""; return; }
@@ -1144,13 +1285,14 @@
     const soon = RS.stops.filter((x) => { const d = daysLeft(x); return d === 1; }).length;
     const again = RS.stops.filter(isRetry).length;
     const biz = RS.stops.filter((x) => x.is_business).length;
+    const badPins = RS.stops.filter(pinBad).length;
     const chips = [
       rush ? `<span class="sc hot" data-jump="rush">⚡ ${rush} rush</span>` : "",
       due ? `<span class="sc hot" data-jump="due">⏰ ${due} due today</span>` : "",
       soon ? `<span class="sc warm" data-jump="due">⏰ ${soon} due tomorrow</span>` : "",
       again ? `<span class="sc warm" data-jump="again">🔁 ${again} re-tr${again === 1 ? "y" : "ies"}</span>` : "",
       biz && !businessHoursNow() ? `<span class="sc warm" data-jump="biz">🏢 ${biz} business · closed now</span>` : "",
-      RS.vague ? `<span class="sc warm" data-jump="rough">📍 ${RS.vague} rough pin${RS.vague === 1 ? "" : "s"}</span>` : ""
+      badPins ? `<span class="sc hot" data-jump="rough">📍 ${badPins} unconfirmed pin${badPins === 1 ? "" : "s"}</span>` : ""
     ].filter(Boolean).join("");
     const clear = !chips;
     // "Stop 49 of 41" is nonsense, and it is what she saw. The paper number and
@@ -1280,8 +1422,11 @@
       byId("rMsg").insertAdjacentHTML("afterbegin", `<div class="alert soft" id="geoMsg">Finding ${missing.length - i} address${missing.length - i > 1 ? "es" : ""} on the map…</div>`);
       const pt = await geocode(missing[i].address);
       const gm = byId("geoMsg"); if (gm) gm.remove();
-      if (pt) { missing[i].lat = pt.lat; missing[i].lng = pt.lng; missing[i].geoApprox = pt.approx; await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng }); }
-      else missing[i].geoFail = true;
+      if (pt) {
+        missing[i].lat = pt.lat; missing[i].lng = pt.lng;
+        missing[i].geoApprox = pt.approx; missing[i].geo_quality = pt.quality;
+        await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng, geo_quality: pt.quality });
+      } else missing[i].geoFail = true;
       if (i < missing.length - 1) await sleep(1100);
     }
     drawStops();
@@ -1332,7 +1477,7 @@
     onMap.forEach(({ j, i }) => {
       if (j.lat == null) return;
       const key = j.lat.toFixed(4) + "," + j.lng.toFixed(4);
-      const stacked = tally[key] > 1;
+      const stacked = tally[key] > 1 || pinBad(j);
       j.geoVague = stacked;
       if (stacked) vague++;
       const n = (seen[key] = (seen[key] || 0) + 1);
@@ -1386,11 +1531,136 @@
       const off = onMap.length - pts.length;
       const bits = [];
       if (off) bits.push(`<b class="bad">${off} of your ${RS.stops.length} stops ${off === 1 ? "isn't" : "aren't"} on the map</b> — tap <b>Find missing pins</b>.`);
-      if (RS.vague) bits.push(`<b class="bad">${RS.vague} pin${RS.vague === 1 ? " is" : "s are"} a rough guess</b> — the lookup couldn't find the street and used the middle of the ZIP instead. Those are the hollow pins. Don't trust them to navigate, and don't trust the drive order around them.`);
+      const bad = RS.stops.filter(pinBad).length;
+      if (bad) bits.push(`<b class="bad">${bad} pin${bad === 1 ? " isn't" : "s aren't"} confirmed</b> — those are the hollow ones. They're left out of the gas sort and parked at the end, so they can't drag your drive sideways. Tap <b>Fix the pins</b> to sort them.`);
       if (!bits.length) bits.push(`All ${onMap.length} stop${onMap.length === 1 ? " is" : "s are"} on the map, each at its own address.`);
       if (RS.filter !== "all") bits.unshift(`<b>This map is your ${J().esc(mf.short)} run.</b>`);
       tag.innerHTML = bits.join(" ");
     }
+  }
+
+  // ---------------------------------------------------------------
+  //  FIX THE PINS
+  //  No lookup gets every address. Gated communities, brand-new builds and
+  //  unit numbers defeat all of them. So there has to be a way to put a pin
+  //  exactly where the door is, by hand, once — and have it stay there.
+  // ---------------------------------------------------------------
+  const PIN = { map: null, job: null, at: null };
+  async function drawFixPins() {
+    const { esc } = J();
+    const bad = RS.stops.filter(pinBad);
+    const back = byId("sheetBack") ||
+      document.body.appendChild(Object.assign(document.createElement("div"), { id: "sheetBack", className: "sheet-back" }));
+    back.hidden = false;
+    const row = (j) => {
+      const why = j.lat == null ? "never found"
+        : j.geo_quality === "rough" ? "middle of the ZIP — not a real spot"
+        : "found by the old lookup, never checked";
+      return `<div class="fp-row" data-fp="${j.id}">
+        <div class="fp-text">
+          <div class="fp-name">${esc(j.person || "(no name)")}${j.job_no ? ` <span class="jobno">#${esc(j.job_no)}</span>` : ""}</div>
+          <div class="fp-addr">${esc(j.address || "no address")}</div>
+          <div class="fp-why">${esc(why)}</div>
+        </div>
+        <div class="fp-btns">
+          <button class="btn ghost thin" data-one="${j.id}">Look up</button>
+          <button class="btn ghost thin" data-hand="${j.id}">📍 Place by hand</button>
+        </div>
+      </div>`;
+    };
+    back.innerHTML = `<div class="sheet fixpins" role="dialog" aria-modal="true" aria-labelledby="fpT">
+      <h2 id="fpT">Fix the pins</h2>
+      <p class="muted">The drive order is worked out from the pins. A pin that's only the middle of a ZIP code isn't a place — so those are left out of the gas sort and parked at the end until you fix them.</p>
+      <div class="fp-sum">
+        <b>${RS.stops.filter(pinOK).length}</b> confirmed · <b class="bad">${bad.length}</b> to fix
+      </div>
+      <button class="btn go wide" id="fpAll" ${bad.length ? "" : "disabled"}>Look all ${bad.length} up again</button>
+      <p class="muted small center">About a second each — ${bad.length} will take roughly ${Math.ceil(bad.length * 2.5 / 60)} minute${Math.ceil(bad.length * 2.5 / 60) === 1 ? "" : "s"}. Leave this open while it runs.</p>
+      <div id="fpProg"></div>
+      <div class="fp-list" id="fpList">${bad.length ? bad.map(row).join("") : `<p class="muted center">Every stop has a confirmed pin. ✓</p>`}</div>
+      <div class="sheet-btns"><button class="btn ghost" id="fpClose">Done</button></div>
+    </div>`;
+    byId("fpClose").onclick = () => { back.hidden = true; back.innerHTML = ""; loadStops(); };
+    byId("fpAll").onclick = () => runLookups(bad);
+    back.querySelectorAll("[data-one]").forEach((b) => b.onclick = () => runLookups([RS.stops.find((x) => x.id === b.dataset.one)]));
+    back.querySelectorAll("[data-hand]").forEach((b) => b.onclick = () => placeByHand(RS.stops.find((x) => x.id === b.dataset.hand)));
+  }
+
+  async function runLookups(list) {
+    const jobs = list.filter(Boolean);
+    if (!jobs.length) return;
+    const prog = byId("fpProg");
+    let fixed = 0, still = 0;
+    for (let i = 0; i < jobs.length; i++) {
+      const j = jobs[i];
+      if (prog) prog.innerHTML = `<div class="fp-prog">Looking up ${i + 1} of ${jobs.length} — ${J().esc(j.person || j.address || "")}</div>`;
+      const pt = await geocode(j.address);
+      if (pt) {
+        j.lat = pt.lat; j.lng = pt.lng; j.geo_quality = pt.quality; j.geoApprox = pt.approx;
+        await updateJob(j.id, { lat: pt.lat, lng: pt.lng, geo_quality: pt.quality });
+        if (pt.quality === "rough") still++; else fixed++;
+      } else still++;
+      const rowEl = document.querySelector(`[data-fp="${j.id}"]`);
+      if (rowEl) {
+        const ok = j.geo_quality === "exact" || j.geo_quality === "street";
+        rowEl.classList.toggle("ok", ok);
+        const w = rowEl.querySelector(".fp-why");
+        if (w) w.textContent = ok
+          ? (j.geo_quality === "exact" ? "✓ found the door" : "✓ found the street")
+          : "still can't find it — place it by hand";
+      }
+    }
+    if (prog) prog.innerHTML = `<div class="fp-prog done">${fixed} pinned properly${still ? ` · ${still} still need placing by hand` : ""}</div>`;
+    J().toast(`${fixed} pin${fixed === 1 ? "" : "s"} fixed${still ? ` · ${still} to place by hand` : ""}`);
+  }
+
+  // Drop the pin yourself. One tap on the map, and it's saved as exact.
+  function placeByHand(j) {
+    if (!j) return;
+    const { esc } = J();
+    const back = byId("sheetBack");
+    PIN.job = j; PIN.at = null;
+    back.innerHTML = `<div class="sheet fixpins" role="dialog" aria-modal="true">
+      <h2>Place this pin</h2>
+      <div class="fp-head"><b>${esc(j.person || "(no name)")}</b><br>${esc(j.address || "")}</div>
+      <p class="muted small">Zoom in and tap the door. Pinch to zoom. This is saved as the real spot and the lookup will never overwrite it.</p>
+      <div id="pinMap" class="pin-map"></div>
+      <p class="fp-chosen" id="pinAt">Nothing picked yet</p>
+      <div class="sheet-btns">
+        <button class="btn ghost" id="pinCancel">Go back</button>
+        <button class="btn go" id="pinSave" disabled>Save this spot</button>
+      </div>
+    </div>`;
+    byId("pinCancel").onclick = () => { if (PIN.map) { PIN.map.remove(); PIN.map = null; } drawFixPins(); };
+    const startAt = j.lat != null ? [j.lat, j.lng] : [HOME_FALLBACK.lat, HOME_FALLBACK.lng];
+    if (!window.L) { byId("pinMap").innerHTML = `<p class="muted center">Map couldn't load.</p>`; return; }
+    setTimeout(() => {
+      if (PIN.map) { PIN.map.remove(); PIN.map = null; }
+      const map = L.map("pinMap", { zoomControl: true }).setView(startAt, j.lat != null ? 15 : 12);
+      PIN.map = map;
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "soft-tiles",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+      let marker = null;
+      map.on("click", (e) => {
+        PIN.at = { lat: e.latlng.lat, lng: e.latlng.lng };
+        if (marker) map.removeLayer(marker);
+        marker = L.marker([PIN.at.lat, PIN.at.lng], {
+          icon: L.divIcon({ className: "pin ping", html: `<i></i><span>HERE</span>`, iconSize: [64, 64], iconAnchor: [32, 32] })
+        }).addTo(map);
+        byId("pinAt").textContent = `Picked: ${PIN.at.lat.toFixed(5)}, ${PIN.at.lng.toFixed(5)}`;
+        byId("pinSave").disabled = false;
+      });
+      setTimeout(() => map.invalidateSize(), 200);
+    }, 60);
+    byId("pinSave").onclick = async () => {
+      if (!PIN.at) return;
+      const ok = await updateJob(j.id, { lat: PIN.at.lat, lng: PIN.at.lng, geo_quality: "exact" });
+      if (!ok) return;
+      j.lat = PIN.at.lat; j.lng = PIN.at.lng; j.geo_quality = "exact"; j.geoApprox = false;
+      if (PIN.map) { PIN.map.remove(); PIN.map = null; }
+      J().toast("Pin saved — that's the real spot now");
+      drawFixPins();
+    };
   }
 
   // Look up only the stops that still have no pin, and say what happened
@@ -1404,8 +1674,9 @@
       const pt = await geocode(missing[i].address);
       if (pt) {
         found++;
-        missing[i].lat = pt.lat; missing[i].lng = pt.lng; missing[i].geoApprox = pt.approx;
-        await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng });
+        missing[i].lat = pt.lat; missing[i].lng = pt.lng;
+        missing[i].geoApprox = pt.approx; missing[i].geo_quality = pt.quality;
+        await updateJob(missing[i].id, { lat: pt.lat, lng: pt.lng, geo_quality: pt.quality });
       } else missing[i].geoFail = true;
       if (i < missing.length - 1) await sleep(1100);
     }
@@ -1434,7 +1705,7 @@
     { id: "rush", label: "⚡ Rush",            short: "rush jobs",  test: (j) => j.service === "Rush" },
     { id: "due",  label: "⏰ Due soon",        short: "jobs due",   test: (j) => { const d = daysLeft(j); return d != null && d <= 1; } },
     { id: "again",label: "🔁 Re-tries",        short: "re-tries",   test: (j) => (j.attempt_count || 0) > 0 },
-    { id: "rough",label: "📍 Rough pins",      short: "rough pins", test: (j) => j.lat == null || !!j.geoVague || !!j.geoApprox }
+    { id: "rough",label: "📍 Unconfirmed pins", short: "unconfirmed pins", test: (j) => j.lat == null || j.geo_quality === "rough" || !j.geo_quality }
   ];
   const stopFilter = () => STOP_FILTERS.find((f) => f.id === RS.filter) || STOP_FILTERS[0];
   // Narrow the day's stops down to the run you're actually driving.
@@ -1619,10 +1890,26 @@
   }
   // A retry is anything you've already knocked on at least once
   const isRetry = (j) => (j.attempt_count || 0) > 0;
+  // A pin you can drive to. A "rough" pin is the middle of a ZIP code — it is
+  // not a place, and letting one into the gas sort is what sent her across the
+  // county and back. Unknown quality means it was found by the old lookup and
+  // has never been checked, so it isn't trusted either.
+  const pinOK = (j) => j.lat != null && (j.geo_quality === "exact" || j.geo_quality === "street");
+  const pinBad = (j) => j.lat == null || j.geo_quality === "rough" || !j.geo_quality;
   async function optimize(opts) {
     const quiet = opts && opts.quiet;
-    const withPts = RS.stops.filter((j) => j.lat != null);
-    if (withPts.length < 2) { if (!quiet) J().toast("Need at least 2 stops on the map"); if (RS.start === "here") RS.here = await getHere(); return; }
+    // ONLY real pins get to decide the drive. Anything rough or unchecked is
+    // parked at the end and called out, instead of quietly dragging the route
+    // across the county to the middle of a ZIP code.
+    const withPts = RS.stops.filter(pinOK);
+    const unsure = RS.stops.filter((j) => !pinOK(j));
+    if (withPts.length < 2) {
+      if (!quiet) J().toast(unsure.length
+        ? `Can't plan a drive \u2014 ${unsure.length} of ${RS.stops.length} stops have no confirmed pin. Tap \u201cFix the pins\u201d first.`
+        : "Need at least 2 stops on the map");
+      if (RS.start === "here") RS.here = await getHere();
+      return;
+    }
     const start = (opts && opts.from) || await homePoint();
     let ordered, held = 0;
     if (RS.retry === "last") {
@@ -1639,12 +1926,13 @@
         ordered = a.concat(b);
       }
     } else ordered = bestOrder(start, withPts);
-    RS.stops = ordered.concat(RS.stops.filter((j) => j.lat == null));
+    RS.stops = ordered.concat(unsure);
     await saveOrder();
     await numberPapers(true);      // fresh run = a fresh set of sticky notes
     drawStops(); drawMap(); drawZipLedger(); drawRetryNote(); drawStrip(); drawNextUp();
-    const total = RS.stops.filter((j) => j.lat != null).reduce((s, p, i, arr) => s + roadMiles(i ? arr[i - 1] : start, p), 0);
+    const total = ordered.reduce((s, p, i, arr) => s + roadMiles(i ? arr[i - 1] : start, p), 0);
     if (!quiet) J().toast(((opts && opts.label) || "Order set")
+      + (unsure.length ? ` \u00b7 ${unsure.length} unconfirmed pin${unsure.length === 1 ? "" : "s"} parked at the end` : "")
       + ` · papers renumbered 1 to ${RS.stops.length} · about ${total.toFixed(1)} miles of driving`
       + (held ? ` · ${held} retr${held === 1 ? "y sits" : "ies sit"} at the end` : ""));
   }
@@ -1824,7 +2112,8 @@
       if (j.lat == null) {
         J().toast("Looking up the address\u2026");
         const pt = await geocode(j.address);
-        if (pt) { j.lat = pt.lat; j.lng = pt.lng; j.geoApprox = pt.approx; await updateJob(j.id, { lat: pt.lat, lng: pt.lng }); }
+        if (pt) { j.lat = pt.lat; j.lng = pt.lng; j.geoApprox = pt.approx; j.geo_quality = pt.quality;
+          await updateJob(j.id, { lat: pt.lat, lng: pt.lng, geo_quality: pt.quality }); }
       }
       const slot = bestSlot(j);
       j.on_today = true;
