@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 68: Big / Detailed phone views —  foldable ZIP box and map, run banner —  quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 69: lane controls, full-screen map fix, ZIP box off the phone route —  Big / Detailed phone views —  foldable ZIP box and map, run banner —  quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1876,3 +1876,82 @@ ol.tight li { margin-bottom: 0.15rem; }
 .nx-row span i { display: block; font-style: normal; font-weight: 400; font-size: 0.86rem; color: var(--navy-2); }
 .nx-row u { margin-left: auto; text-decoration: none; flex-shrink: 0; color: var(--navy-2); font-weight: 700; font-variant-numeric: tabular-nums; }
 .nx-more { margin: 0.4rem 0 0; font-size: 0.82rem; color: var(--mute); font-weight: 700; text-align: center; }
+
+
+/* =====================================================================
+   FULL MAP — this has to beat every other map rule, so it comes last.
+   The view rules (.route.view-big .map / .route.view-full .map) carry the
+   same specificity as the full-screen rule, and being later in the file
+   they were winning — which is why "Full map" opened a 150px strip.
+   ===================================================================== */
+@media (max-width: 899px) {
+  .route.map-big .map-wrap {
+    position: fixed; inset: 0; z-index: 2000; background: var(--ivory);
+    padding: 0; margin: 0;
+  }
+  .route.map-big .map-wrap .map {
+    height: 100% !important; min-height: 0 !important;
+    width: 100%; border: 0; border-radius: 0;
+  }
+  /* zoom buttons keep the top-left corner; the way out moves to the right */
+  .route.map-big .map-shrink {
+    display: block; position: absolute; left: auto; right: 0.7rem; width: auto;
+    top: calc(0.7rem + env(safe-area-inset-top, 0px)); z-index: 2100;
+    background: var(--navy); color: #fff; border: 3px solid #fff; border-radius: 11px;
+    padding: 0.6rem 0.95rem; font-size: 1rem; font-weight: 800; font-family: var(--sans);
+    box-shadow: 0 2px 10px rgba(0,0,0,.3);
+  }
+  .route.map-big .map-expand,
+  .route.map-big .map-hide { display: none; }
+  /* bigger pins and bigger zoom buttons when the map owns the screen */
+  .route.map-big .leaflet-control-zoom a {
+    width: 44px !important; height: 44px !important; line-height: 44px !important; font-size: 24px !important;
+  }
+  .route.map-big .leaflet-top.leaflet-left { top: env(safe-area-inset-top, 0px); }
+
+  /* turn the phone sideways and it just works — more road, same controls */
+  @media (orientation: landscape) {
+    .route.map-big .map-shrink { padding: 0.45rem 0.8rem; font-size: 0.92rem; }
+  }
+
+  /* ---- the ZIP box is gone from the Route on the phone ----
+     It was never a driving tool. It's for filing papers into the cabinet by
+     ZIP, which is what Paper check on the Jobs tab is for. The ZIP counts are
+     still in the navy strip at the top if you want a glance. */
+  .route #rZips { display: none; }
+}
+
+
+/* =====================================================================
+   THE TWO LANES — postings/rushes and standard serves, kept apart
+   across Add Jobs, Jobs and the Route, and merged again with one tap.
+   ===================================================================== */
+.lane-pick { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.3rem 0 0.6rem; }
+.lane-btn {
+  flex: 1 1 auto; min-height: 46px; padding: 0 0.8rem;
+  background: var(--paper); border: 2px solid var(--line); border-radius: 11px;
+  font-family: var(--sans); font-size: 0.95rem; font-weight: 700; color: var(--navy);
+}
+.lane-btn b { color: var(--gold-text); margin-left: 0.3rem; font-variant-numeric: tabular-nums; }
+.lane-btn.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.lane-btn.on b { color: var(--gold); }
+.lane-note {
+  flex: 1 1 100%; margin: 0.1rem 0 0; padding: 0.45rem 0.65rem;
+  background: #EAF1EA; border: 2px solid var(--green); border-radius: 10px;
+  font-size: 0.86rem; font-weight: 600; color: #24422B; line-height: 1.4;
+}
+.lane-note b { color: var(--green); }
+
+.lane-switch {
+  background: #F3EFF9; border: 2px solid #CDBEE4; border-radius: 12px;
+  padding: 0.6rem 0.75rem; margin-bottom: 0.6rem;
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.lane-switch > span { font-size: 0.95rem; }
+.lane-switch > span b { font-variant-numeric: tabular-nums; }
+.lane-switch .btn { flex: 1 1 auto; }
+.lane-switch p { margin: 0; line-height: 1.4; }
+
+@media (max-width: 899px) {
+  .lane-btn { flex: 1 1 100%; text-align: left; }
+}

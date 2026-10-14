@@ -1,9 +1,9 @@
-// J EMPIRE SERVER — intake.js (version 40: phone Add Jobs: the client picker and Build follow you down the page, and “Paste another client” puts you back in the box —  Lynx Legal reads their Party / Servees screen, LIN reference and all —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
+// J EMPIRE SERVER — intake.js (version 41: mark a whole pasted batch as 2 Day Post in one tap, deadlines and all —  phone Add Jobs: the client picker and Build follow you down the page, and “Paste another client” puts you back in the box —  Lynx Legal reads their Party / Servees screen, LIN reference and all —  2 Day Post in one tap on a draft —  an apartment # no longer eats the address, and “Due in 7d” is read as a deadline instead of binned —  two people at one Proof door = one stop, one payment, both job numbers —  two job numbers at one door is two serves, not a duplicate —  Proof — two people at one door both come through, wrapped addresses stitch back together, “by 10/20” reads as a deadline —  a name that wraps onto two lines stays one job —  one “on today’s route” tick per job card —  Userve reads mixed-case names, drops Create/Reset Route buttons, reads the job # off the date line —  papers start unticked —  drafts grouped by ZIP —  packet price from the rates table —  wrapped addresses + duplicate address flag —  ProVest multi-address split + warning —  one-tap remove on draft cards —  handles column-by-column copies —  papers checked by default on every job —  deadline flags —  Proof, Accurate Serve, Legal Serve USA and Lynx Legal parsers; Ody's detail view; + Add one job; rates table)
 // Reads pasted jobs for each client, drops the junk words, and builds
 // uniform job drafts. Every draft can be edited before saving.
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 40 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { intake: 41 });
 
   // =====================================================================
   // 1. PARSERS (pure functions — no screen code here)
@@ -904,6 +904,7 @@
         </div>
         <div class="intake-right">
           <div class="summary" id="inSummary"></div>
+          <div id="inLane"></div>
           <div class="drafts" id="inDrafts"></div>
           <div class="save-area" id="inSaveArea"></div>
         </div>
@@ -966,6 +967,39 @@
     J().toast(found.length + (found.length === 1 ? " job found" : " jobs found"));
   }
 
+  // A Proof batch is 10-15 two-day postings at once. Tapping the 📌 flag on
+  // every card is fifteen taps before she's even checked an address, so the
+  // whole batch gets one button — and one to put them back.
+  function drawLaneSwitch() {
+    const box = document.getElementById("inLane"); if (!box) return;
+    if (!S.drafts.length) { box.innerHTML = ""; return; }
+    const isPost = (d) => /day\s*post/i.test(d.job_type || "");
+    const n = S.drafts.filter(isPost).length;
+    const all = S.drafts.length;
+    box.innerHTML = `<div class="lane-switch">
+      <span><b>${n} of ${all}</b> ${n === 1 ? "is a" : "are"} 2 Day Post${n === 1 ? "" : "s"}</span>
+      <div class="row-gap">
+        <button class="btn ghost thin" data-lane="post" ${n === all ? "disabled" : ""}>\u{1F4CC} Mark all 2 Day Post</button>
+        <button class="btn ghost thin" data-lane="std" ${n === 0 ? "disabled" : ""}>\u{1F6AA} Mark all standard</button>
+      </div>
+      <p class="muted small">Postings get their own route and their own map, separate from your personal serves. Marking them here sets the two-day deadline on each one too.</p>
+    </div>`;
+    box.querySelectorAll("[data-lane]").forEach((b) => b.onclick = () => {
+      const on = b.dataset.lane === "post";
+      S.drafts.forEach((d) => {
+        if (on) {
+          d.job_type = "2 Day Post";
+          if (!d.due_date) {
+            const by = new Date(); by.setHours(12, 0, 0, 0); by.setDate(by.getDate() + 2);
+            d.due_date = `${by.getFullYear()}-${String(by.getMonth() + 1).padStart(2, "0")}-${String(by.getDate()).padStart(2, "0")}`;
+          }
+        } else if (/day\s*post/i.test(d.job_type || "")) d.job_type = "";
+      });
+      saveLocal(); drawDrafts();
+      J().toast(on ? `All ${all} marked 2 Day Post \u00b7 deadlines set` : "All moved back to standard");
+    });
+  }
+
   function drawPapersSwitch() {
     const box = document.getElementById("inPapers"); if (!box) return;
     const jean = S.drafts.filter((d) => PAPER_CLIENTS.includes(d.client));
@@ -1002,6 +1036,7 @@
   function drawDrafts() {
     const { esc } = J();
     const box = document.getElementById("inDrafts");
+    drawLaneSwitch();
     drawPapersSwitch();
     // Same address twice inside this one paste — flag the second one.
     // BUT two people at one door, each with their own job number, is two real

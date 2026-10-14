@@ -1,7 +1,7 @@
-// J EMPIRE SERVER — jobs.js (version 45: two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
+// J EMPIRE SERVER — jobs.js (version 46: postings and standard serves are two lanes now — split or merged in one tap on Jobs and on the Route —  Full map actually fills the screen, rotates, and zooms —  ZIP box off the phone route (it lives in Paper check, where the filing happens) —  two phone layouts you pick between — Big (one stop, large type, map parked at the bottom) and Detailed (the whole list) —  Coming up is tappable, so Big view can move around without the list —  a run is a separate drive, not a filter — pick Postings or Rush and that IS today's route: its own order, its own paper numbers 1…n, its own map and miles —  the ZIP box and the map fold shut on the phone and stay as a one-line reference —  Served can no longer close out the next job — after any action nothing is open until you tap Next stop —  the phone list goes quiet: a stop you're not standing at is three lines, the iPad keeps everything —  “Where I am now” and “Home” drop a flashing gold ring on the map —  “save re-tries for the end” turned itself off: with 39 of 44 stops a re-try it was throwing the gas order away —  re-tries can be saved for the end of the run instead of jumping the queue —  phone Route: one navy strip, a live map band you can open full screen, and what's coming up next —  Route filters — work the postings or the business ones as a cluster —  skip a stop without logging a false attempt —  lineup grouped by ZIP or client and the rows stop overlapping —  set 2 Day Post yourself — one tap, and it sets the two-day deadline —  paper check by ZIP or by client, with a “Jean’s two only” view —  stacked “middle of the ZIP” pins fan out and own up to it —  “you are here” pin, and the map says how many stops it actually placed —  tap a client in the count box to see only their jobs —  road miles banked at every stop —  the paper number stops shuffling —  tap any stop to open it —  count box on Jobs —  stops-by-ZIP box and a rush bar on the Route —  rush shows on typed jobs —  papers tick on every client —  a stop with no county no longer disappears off the route —  jump a stop to the front —  papers list grouped by ZIP —  packet reminder on the stop —  due boxes tint red —  gas order wins, deadlines shown not re-sorted —  deadline beats a saved route order —  lineup rebuilt —  deadlines drive the route order —  print pile and Jean pile split apart —  need-papers-printed list —  Lineup list + papers on every job —  deadline + job-type flags —  Served + Non-Served go straight to the sheet, Attempts folder, miles banked)
 (function () {
   "use strict";
-  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 45 });
+  window.JES_VER = Object.assign(window.JES_VER || {}, { jobs: 46 });
   const J = () => window.JES;
   const P = () => window.JES_PARSE;
   const $ = (s) => document.querySelector(s);
@@ -89,6 +89,7 @@
           <button class="btn ghost thin" id="jPaper">📋 Paper check</button>
           <div class="seg" id="jCounty">${["All", "Osceola", "Orange"].map((c) => `<button class="${c === JS.county ? "on" : ""}" data-c="${c}">${c}</button>`).join("")}</div>
         </div>
+        <div class="lane-pick" id="jLane"></div>
         <div id="jTally"></div>
         <div class="chips phone-only" id="jColPick"></div>
         <div id="jBody"><p class="muted">Loading…</p></div>
@@ -96,6 +97,12 @@
       </section>
       <div class="sheet-back" id="sheetBack" hidden></div>`;
     byId("jCounty").onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) { JS.county = b.dataset.c; drawJobs(); } };
+    byId("jLane").onclick = (e) => {
+      const b = e.target.closest("[data-lane]"); if (!b) return;
+      JS.lane = b.dataset.lane;
+      window.JES_LANE.set(JS.lane);
+      drawJobs();
+    };
     byId("jq").oninput = (e) => { JS.q = e.target.value; drawList(); };
     byId("jPaper").onclick = () => drawPaperCheck();
     byId("jDense").onclick = (e) => {
@@ -313,6 +320,18 @@
     const { esc } = J();
     const q = JS.q.toLowerCase().trim();
     const byCounty = (j) => JS.county === "All" || j.county === JS.county || (!j.county && JS.county !== "All" && needsAddress(j));
+    // Postings and standard serves are two different days' work, so the Jobs
+    // tab splits them exactly like the Route does.
+    const lane = JS.lane || "all";
+    const inLane = (j) => lane === "all" || (lane === "post" ? isPost(j) : !isPost(j));
+    const nPost = JS.jobs.filter((j) => j.status === "Active" && isPost(j)).length;
+    const nStd  = JS.jobs.filter((j) => j.status === "Active" && !isPost(j)).length;
+    const laneBox = byId("jLane");
+    if (laneBox) {
+      laneBox.innerHTML = [["all", "Everything", nPost + nStd], ["post", "\u{1F4CC} 2 Day Posts & rushes", nPost], ["std", "\u{1F6AA} Standard serves", nStd]]
+        .map(([id, label, n]) => `<button class="lane-btn ${id === lane ? "on" : ""}" data-lane="${id}">${label} <b>${n}</b></button>`).join("")
+        + (lane !== "all" ? `<p class="lane-note">Showing <b>${lane === "post" ? "postings and rushes" : "standard serves"}</b> only. Tap <b>Everything</b> to put them back together.</p>` : "");
+    }
     const dueRank = (j) => (j.due_date ? new Date(j.due_date).getTime() : 9e15);
     const sortJobs = (a, b) => (b.service === "Rush") - (a.service === "Rush") || dueRank(a) - dueRank(b);
     const body = byId("jBody");
@@ -324,12 +343,12 @@
       // Searching in Working shows one list across everything, including finished jobs
       byId("jTally").innerHTML = "";
       byId("jColPick").innerHTML = "";
-      const hits = JS.jobs.filter((j) => byCounty(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
+      const hits = JS.jobs.filter((j) => byCounty(j) && inLane(j) && [j.person, j.job_no, j.address, j.client].join(" ").toLowerCase().includes(q)).sort(sortJobs);
       body.innerHTML = `<p class="muted small">${hits.length} match${hits.length === 1 ? "" : "es"} for “${esc(JS.q)}”</p><div class="search-grid">${hits.map(JS.dense ? jobLine : jobCard).join("") || ""}</div>`;
     } else {
       const byClient = (j) => JS.client === "All" || (j.client || "No client") === JS.client;
-      const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && byClient(j) && c.test(j)).sort(sortJobs) }));
-      byId("jTally").innerHTML = tallyBox(JS.jobs.filter((j) => byCounty(j) && j.status === "Active"));
+      const lists = COLS.map((c) => ({ c, jobs: JS.jobs.filter((j) => byCounty(j) && byClient(j) && inLane(j) && c.test(j)).sort(sortJobs) }));
+      byId("jTally").innerHTML = tallyBox(JS.jobs.filter((j) => byCounty(j) && inLane(j) && j.status === "Active"));
       byId("jTally").querySelectorAll("[data-client]").forEach((b) => b.onclick = () => {
         JS.client = b.dataset.client === JS.client ? "All" : b.dataset.client;
         drawList();
@@ -898,7 +917,21 @@
     byId("rPins").onclick = () => findMissingPins();
     // Full-screen map, and back again. Leaflet has to be told the box changed size.
     const resize = () => { if (RS.map) { RS.map.invalidateSize(); fitMap(); } };
-    byId("rExpand").onclick = () => { RS.mapBig = true; byId("rSec").classList.add("map-big"); setTimeout(resize, 60); };
+    byId("rExpand").onclick = () => {
+      RS.mapBig = true;
+      byId("rSec").classList.add("map-big");
+      // Leaflet measures its box once. Give the fixed layout a frame to land,
+      // then measure again after the rotate/resize settles.
+      setTimeout(resize, 60); setTimeout(resize, 350);
+    };
+    if (!RS.rotWired) {
+      RS.rotWired = true;
+      window.addEventListener("orientationchange", () => { setTimeout(() => { if (RS.map) { RS.map.invalidateSize(); fitMap(); } }, 350); });
+      window.addEventListener("resize", () => {
+        clearTimeout(RS.rotT);
+        RS.rotT = setTimeout(() => { if (RS.map) RS.map.invalidateSize(); }, 220);
+      });
+    }
     byId("rMapHide").onclick = () => {
       localStorage.setItem("jes_map_shut", "1");
       byId("rSec").classList.add("map-shut");
@@ -1178,6 +1211,7 @@
     const all = RS.bounds || [];
     if (!all.length) { map.setView([HOME_FALLBACK.lat, HOME_FALLBACK.lng], 11); return; }
     const band = !RS.mapBig && window.matchMedia("(max-width: 899px)").matches;
+    if (RS.mapBig) { map.fitBounds(all, { padding: [50, 50], maxZoom: 15 }); return; }
     if (!band) { map.fitBounds(all, { padding: [40, 40], maxZoom: 15 }); return; }
     // the band: your own dot plus the next three stops, close in
     const near = (RS.here ? [[RS.here.lat, RS.here.lng]] : []).concat(RS.nextPts || []);
@@ -1301,6 +1335,11 @@
   // today's route outright: the order, the paper numbers, the map, the miles and
   // the whole list are that run only. The rest sit parked until you switch back.
   const isPost = (j) => /day\s*post/i.test(j.job_type || "") || /post/i.test(j.service || "");
+  window.JES_LANE = {
+    isPost,
+    get: () => localStorage.getItem("jes_lane") || "all",
+    set: (v) => localStorage.setItem("jes_lane", v)
+  };
   const STOP_FILTERS = [
     { id: "all",  label: "Everything",        short: "everything", test: () => true },
     { id: "post", label: "📌 Postings",      short: "postings",   test: isPost },
