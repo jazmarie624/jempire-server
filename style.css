@@ -1,4 +1,4 @@
-/* J EMPIRE SERVER — style.css (version 65: phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
+/* J EMPIRE SERVER — style.css (version 66: quiet phone stop list, flashing gold ring for Where I am / Home, warning note on re-tries —  phone Route strip + map band + Coming up, sticky Add Jobs bar, re-try band —  address on sheet lines —  editable sheet lines + jump to front —  ZIP groupings —  packet warning —  needs-filling hints —  split button —  J Empire invoice —  unserve button —  due boxes tint red —  late-deadline warning —  lineup rebuilt —  six columns —  remove button —  printing list —  version stamp —  Lineup —  deadline flags —  Attempts, Sheets, payment trackers, Jean's printed form) */
 :root {
   --navy: #1F2A44;
   --navy-2: #3D4660;
@@ -1706,4 +1706,63 @@ ol.tight li { margin-bottom: 0.15rem; }
    the summary line is nothing but clutter. */
 @media (min-width: 900px) {
   .reads > summary { display: none; }
+}
+
+
+/* ---------- "show me where that is" — the flashing gold ring ---------- */
+.pin.ping {
+  background: transparent !important; border: 0 !important;
+  display: flex; align-items: center; justify-content: center;
+}
+.pin.ping i {
+  position: absolute; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 0 4px #fff, 0 0 14px 3px rgba(176,141,67,.95);
+  animation: jesPing 1.1s ease-out infinite;
+}
+.pin.ping span {
+  position: relative; z-index: 2; font-size: 0.62rem; font-weight: 800;
+  color: #1F2A44; letter-spacing: .06em;
+}
+@keyframes jesPing {
+  0%   { transform: scale(1);   opacity: 1; }
+  70%  { transform: scale(2.3); opacity: .12; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .pin.ping i { animation: none; opacity: .85; } }
+.pin.house {
+  background: var(--gold); border: 3px solid #fff; color: #1F2A44;
+  font-size: 1.05rem; display: flex; align-items: center; justify-content: center;
+}
+/* a note that is actually warning you about something */
+.retry-note.warn {
+  background: #FBE9E4; border-color: var(--red); color: #6B2517;
+}
+
+
+/* =====================================================================
+   PHONE: the stop list, quiet.
+   The iPad keeps every line of this — it has the room and it's where the
+   planning happens. On the phone, a stop you are NOT standing at is three
+   lines: number, name, address. Everything else is still there the moment
+   you tap it open. Nothing is removed, it just stops shouting all at once.
+   ===================================================================== */
+@media (max-width: 899px) {
+  .stop:not(.current) .tap-hint { display: none; }
+  .stop:not(.current) .biz-warn,
+  .stop:not(.current) .pk-warn,
+  .stop:not(.current) .door-note { display: none; }
+  .stop:not(.current) .small-actions { display: none; }
+  .stop:not(.current) .move { display: none; }
+  .stop:not(.current) { padding: 0.4rem 0.6rem; margin-bottom: 0.4rem; }
+  .stop:not(.current) .stop-top { gap: 0.5rem; align-items: flex-start; }
+  .stop:not(.current) .draft-name { font-size: 1rem; line-height: 1.25; }
+  .stop:not(.current) .draft-addr { font-size: 0.95rem; line-height: 1.3; color: #424D63; }
+  .stop:not(.current) .draft-later { font-size: 0.78rem; margin-top: 0.15rem; }
+  .stop:not(.current) .chip-row { gap: 0.2rem; margin-top: 0.2rem; }
+  .stop:not(.current) .flag-chip { font-size: 0.66rem; padding: .08rem .32rem; }
+  /* the one you're standing at stays big and keeps everything */
+  .stop.current { border-width: 3px; }
+
+  /* the long rough-pin paragraph becomes one line you can still tap to read */
+  .map-count { font-size: 0.82rem; line-height: 1.4; }
 }
